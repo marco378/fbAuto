@@ -26,7 +26,9 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",             // local dev
-      "https://fb-auto-client.vercel.app"  // deployed frontend
+      "https://fb-auto-client.vercel.app", // deployed frontend
+      "https://audace.app.n8n.cloud",     // n8n webhooks
+      /\.n8n\.cloud$/                      // any n8n subdomain
     ],
     credentials: true, // IMPORTANT: allow cookies
   })

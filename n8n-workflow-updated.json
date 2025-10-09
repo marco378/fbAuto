@@ -1,0 +1,411 @@
+{
+  "name": "FB Auto - Railway Integrated Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "webhook-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-848, 112],
+      "id": "webhook-node",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "verify-mode",
+              "leftValue": "={{ $json.query['hub.mode'] }}",
+              "rightValue": "subscribe",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "verify-token", 
+              "leftValue": "={{ $json.query['hub.verify_token'] }}",
+              "rightValue": "n8n-auto-messanger",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-650, 112],
+      "id": "verify-webhook",
+      "name": "Verify Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-450, 50],
+      "id": "respond-verification",
+      "name": "Respond Verification"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if this is a user message\nconst body = $json.body;\nconst entry = body.entry?.[0];\nconst messaging = entry?.messaging?.[0];\n\n// Only process actual user messages\nif (messaging?.message?.text && !messaging?.delivery && !messaging?.read) {\n  return {\n    shouldRespond: true,\n    senderId: messaging.sender.id,\n    messageText: messaging.message.text,\n    timestamp: messaging.timestamp,\n    messageId: messaging.message.mid,\n    sessionId: messaging.sender.id + '_' + new Date().toISOString().split('T')[0]\n  };\n}\n\nreturn { shouldRespond: false };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-450, 150],
+      "id": "message-filter",
+      "name": "Message Filter"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://fbauto-production.up.railway.app/api/n8n/job-context/{{ $json.sessionId }}",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Webhook-Source": "n8n-automation"
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-250, 150],
+      "id": "get-job-context",
+      "name": "Get Job Context"
+    },
+    {
+      "parameters": {
+        "method": "GET", 
+        "url": "=https://fbauto-production.up.railway.app/api/n8n/conversations/{{ $('Message Filter').item.json.senderId }}",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-50, 150],
+      "id": "get-conversation-history",
+      "name": "Get Conversation History"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare data for AI Agent\nconst messageData = $('Message Filter').first().json;\nconst jobContext = $('Get Job Context').first().json.jobContext;\nconst conversations = $('Get Conversation History').first().json.conversations || [];\n\n// Build conversation history\nconst messages = conversations.map(conv => ([\n  { role: 'user', content: conv.userMessage },\n  { role: 'assistant', content: conv.aiResponse }\n])).flat().filter(msg => msg.content);\n\n// Add current message\nmessages.push({\n  role: 'user',\n  content: messageData.messageText\n});\n\nconst systemPrompt = `You are an AI recruitment assistant conducting candidate screening for ${jobContext.contextData.jobTitle} position. Follow the structured interview process and always respond in JSON format.`;\n\nreturn {\n  messages,\n  currentMessage: messageData.messageText,\n  jobContext,\n  systemPrompt,\n  senderId: messageData.senderId,\n  sessionId: messageData.sessionId\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [150, 150],
+      "id": "prepare-ai-data",
+      "name": "Prepare AI Data"
+    },
+    {
+      "parameters": {
+        "model": "gemini-1.5-pro",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [350, 250],
+      "id": "gemini-model",
+      "name": "Gemini Model"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=USER MESSAGE:\n{{ $json.currentMessage }}",
+        "options": {
+          "systemMessage": "={{ $json.systemPrompt }}\n\n## Previous Conversation:\n{{ $json.messages.slice(0, -1).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\\n\\n') }}\n\n## Current User Message:\n\"{{ $json.currentMessage }}\"\n\n## Job Context:\n- **Position**: {{ $json.jobContext.contextData.jobTitle }}\n- **Company**: {{ $json.jobContext.contextData.company }}\n- **Location**: {{ $json.jobContext.contextData.location }}\n- **Requirements**: {{ $json.jobContext.contextData.requirements.join(', ') }}\n\n**ALWAYS respond in JSON format with fields: message, shouldProceed, shouldStore, isComplete**"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [350, 150],
+      "id": "ai-agent",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and extract data\nconst aiOutput = $input.first().json.output;\nlet parsed;\n\ntry {\n  // Try to parse JSON from AI output\n  const jsonMatch = aiOutput.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsed = JSON.parse(jsonMatch[0]);\n  } else {\n    // Fallback if no JSON found\n    parsed = {\n      message: aiOutput,\n      shouldProceed: true,\n      shouldStore: false,\n      isComplete: false\n    };\n  }\n} catch (error) {\n  // Error fallback\n  parsed = {\n    message: \"I apologize, but I'm having trouble processing your response. Could you please try again?\",\n    shouldProceed: true,\n    shouldStore: false,\n    isComplete: false\n  };\n}\n\n// Add metadata\nconst messageData = $('Message Filter').first().json;\nconst jobContext = $('Get Job Context').first().json.jobContext;\n\nreturn {\n  ...parsed,\n  senderId: messageData.senderId,\n  sessionId: messageData.sessionId,\n  userMessage: messageData.messageText,\n  timestamp: new Date().toISOString(),\n  jobContext\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [550, 150],
+      "id": "parse-ai-response",
+      "name": "Parse AI Response"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://fbauto-production.up.railway.app/api/n8n/conversations",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"senderId\": \"{{ $json.senderId }}\",\n  \"message\": \"{{ $json.userMessage }}\",\n  \"aiResponse\": \"{{ $json.message }}\",\n  \"sessionId\": \"{{ $json.sessionId }}\"\n}",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Webhook-Source": "n8n-automation"
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 100],
+      "id": "save-conversation",
+      "name": "Save Conversation"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-complete",
+              "leftValue": "={{ $json.isComplete }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [750, 200],
+      "id": "check-completion",
+      "name": "Check If Complete"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract candidate data from conversation\nconst conversations = $('Get Conversation History').first().json.conversations || [];\nconst currentData = $input.first().json;\n\n// Parse conversation for candidate information\nlet candidateData = {\n  id: Date.now(),\n  senderId: currentData.senderId,\n  name: null,\n  email: null,\n  phone: null,\n  experience: null,\n  skills: [],\n  resumeUrl: null,\n  eligibility: \"PENDING\",\n  notes: null,\n  messengerConversation: [],\n  conversationSummary: null,\n  screeningScore: null,\n  keyStrengths: [],\n  concerns: [],\n  availableForInterview: false,\n  preferredInterviewTime: null,\n  createdAt: new Date().toISOString()\n};\n\n// Extract information from conversations\nconversations.forEach(conv => {\n  const userMsg = conv.userMessage?.toLowerCase() || '';\n  const aiMsg = conv.aiResponse?.toLowerCase() || '';\n  \n  candidateData.messengerConversation.push({\n    sender_id: null,\n    content: conv.userMessage,\n    id: null\n  });\n  \n  // Extract name (simple pattern matching)\n  if (aiMsg.includes('name') && userMsg.length < 50) {\n    const nameMatch = userMsg.match(/(?:i'm|i am|my name is|call me)\\s+([a-zA-Z\\s]+)/i);\n    if (nameMatch) candidateData.name = nameMatch[1].trim();\n    else if (userMsg.split(' ').length <= 3) candidateData.name = userMsg;\n  }\n  \n  // Extract email\n  const emailMatch = userMsg.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/);\n  if (emailMatch) candidateData.email = emailMatch[0];\n  \n  // Extract phone\n  const phoneMatch = userMsg.match(/[\\d\\s\\-\\+\\(\\)]{10,}/);\n  if (phoneMatch && aiMsg.includes('phone')) candidateData.phone = phoneMatch[0];\n  \n  // Extract resume URL\n  const urlMatch = userMsg.match(/https?:\\/\\/[^\\s]+/);\n  if (urlMatch && (aiMsg.includes('resume') || aiMsg.includes('cv'))) {\n    candidateData.resumeUrl = urlMatch[0];\n  }\n  \n  // Extract experience mentions\n  if (aiMsg.includes('experience') && userMsg.length > 20) {\n    candidateData.experience = userMsg;\n  }\n});\n\n// Add conversation summary\ncandidateData.conversationSummary = `Candidate completed screening for ${currentData.jobContext.contextData.jobTitle} position. Total messages: ${conversations.length}.`;\n\n// Simple scoring based on completion\ncandidateData.screeningScore = Math.min(95, conversations.length * 7);\n\nreturn candidateData;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [950, 300],
+      "id": "extract-candidate-data",
+      "name": "Extract Candidate Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://fbauto-production.up.railway.app/api/n8n/candidates",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Webhook-Source": "n8n-automation"
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1150, 300],
+      "id": "save-candidate",
+      "name": "Save Candidate"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v23.0/{{ $('Webhook').item.json.body.entry[0].messaging[0].recipient.id }}/messages?access_token=EAAUNrA8WQrUBPQeDHXkigggXhbpAGeosARIKmnCrUV6irioBzbV9RnZCd5qA6ixyZA2BGO0ulGsjnhhbKvB2Ji2pT5gQ396fp43s0S4qBmn8p7YzY0H946zw7NNS2EQ9ZBKabiyFve1upXYH1GOv8vPVgwo8bIetp9LLZAsHpzounNVD5g0YZBNdqFJRTOBnZBUW5QvwZDZD",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"recipient\": {\n    \"id\": \"{{ $('Message Filter').item.json.senderId }}\"\n  },\n  \"messaging_type\": \"RESPONSE\",\n  \"message\": {\n    \"text\": \"{{ $('Parse AI Response').item.json.message }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [950, 150],
+      "id": "send-facebook-message",
+      "name": "Send Facebook Message"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook", 
+      "typeVersion": 1.4,
+      "position": [1150, 150],
+      "id": "respond-ok",
+      "name": "Respond OK"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond Verification",
+            "type": "main", 
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Message Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Filter": {
+      "main": [
+        [
+          {
+            "node": "Get Job Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job Context": {
+      "main": [
+        [
+          {
+            "node": "Get Conversation History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Conversation History": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Data": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Save Conversation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check If Complete",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Facebook Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Complete": {
+      "main": [
+        [
+          {
+            "node": "Extract Candidate Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Candidate Data": {
+      "main": [
+        [
+          {
+            "node": "Save Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Facebook Message": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-10-09T00:00:00.000Z",
+  "versionId": "1"
+}
