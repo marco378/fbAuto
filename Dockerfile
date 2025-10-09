@@ -52,6 +52,9 @@ COPY fbAuto-main/ ./fbAuto-main/
 # Generate Prisma client
 RUN cd fbAuto-main/server && npx prisma generate
 
+# Set working directory to fbAuto-main for the final application
+WORKDIR /app/fbAuto-main
+
 # Expose port
 EXPOSE 5000
 
@@ -63,4 +66,5 @@ ENV SLOWMO=0
 ENV PORT=5000
 
 # Start the application
-CMD ["node", "fbAuto-main/server/src/index.js"]
+WORKDIR /app/fbAuto-main
+CMD ["node", "server/src/index.js"]
