@@ -278,7 +278,16 @@ class AutomationService {
 
     } catch (error) {
       console.error("❌ Batch processing failed:", error.message);
-      throw error;
+      return {
+        success: false,
+        message: `Batch processing failed: ${error.message}`,
+        processedJobs: [],
+        stats: {
+          total: 0,
+          successful: 0,
+          failed: 0
+        }
+      };
     }
   }
 

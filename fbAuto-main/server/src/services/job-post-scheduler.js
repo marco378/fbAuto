@@ -58,8 +58,14 @@ class JobPostScheduler {
       console.log('🔄 Running scheduled job post automation...');
       const result = await automationService.processAllPendingJobs();
       
-      if (result.success) {
-        console.log(`✅ Job post automation completed: ${result.stats.successful}/${result.stats.total} jobs successful`);
+      if (result && result.success) {
+        if (result.processedJobs && result.processedJobs.length > 0) {
+          const successful = result.processedJobs.filter(job => job.success).length;
+          const total = result.processedJobs.length;
+          console.log(`✅ Job post automation completed: ${successful}/${total} jobs successful`);
+        } else {
+          console.log('✅ Job post automation completed: No jobs to process');
+        }
       } else {
         console.log('⚠️ Job post automation completed with issues');
       }
