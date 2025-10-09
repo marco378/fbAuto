@@ -30,6 +30,11 @@ RUN apt-get update && apt-get install -y \
     libcairo-gobject2 \
     libgtk-3-0 \
     libgdk-pixbuf2.0-0 \
+    libgbm1 \
+    libdrm2 \
+    libxshmfence1 \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -43,8 +48,9 @@ COPY fbAuto-main/server/package*.json ./fbAuto-main/server/
 RUN cd fbAuto-main && npm install
 RUN cd fbAuto-main/server && npm install
 
-# Install Playwright browsers
+# Install Playwright browsers and system dependencies
 RUN cd fbAuto-main && npx playwright install chromium
+RUN cd fbAuto-main && npx playwright install-deps
 
 # Copy source code
 COPY fbAuto-main/ ./fbAuto-main/
