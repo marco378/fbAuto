@@ -26,9 +26,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",             // local dev
-      "https://fb-auto-client.vercel.app", // deployed frontend
-      "https://audace.app.n8n.cloud",     // n8n webhooks
-      /\.n8n\.cloud$/                      // any n8n subdomain
+      "https://fb-auto-client.vercel.app"  // deployed frontend
     ],
     credentials: true, // IMPORTANT: allow cookies
   })
@@ -37,7 +35,12 @@ app.use(cookieParser())
 app.use(express.json())
 
 app.get("/health", (req, res) => {
-  res.send(Date.now())
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || "development"
+  })
 })
 
 // Enhanced automation status endpoint with system stats
