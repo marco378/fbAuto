@@ -1,0 +1,225 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String               @id @default(cuid())
+  username    String
+  email       String               @unique
+  password    String
+  createdAt   DateTime             @default(now())
+  upddatedAt  DateTime             @updatedAt
+  credentials FacebookCredentials?
+  jobs        Job[]
+
+  @@map("users")
+}
+
+model FacebookCookies {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  cookies   Json
+  isValid   Boolean   @default(true)
+  lastUsed  DateTime  @default(now())
+  expiresAt DateTime?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("facebook_cookies")
+}
+
+model FacebookCredentials {
+  id         String   @id @default(cuid())
+  email      String
+  password   String
+  createdAt  DateTime @default(now())
+  upddatedAt DateTime @updatedAt
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("facebook_credentials")
+}
+
+model Job {
+  id             String    @id @default(cuid())
+  title          String
+  company        String
+  location       String
+  jobType        JobType
+  experiance     String?
+  salaryRange    String?
+  description    String
+  requirements   String[]
+  responsibities String[]
+  perks          String?
+  isActive       Boolean   @default(true)
+  facebookGroups String[]  @default([])
+  createdAt      DateTime  @default(now())
+  upddatedAt     DateTime  @updatedAt
+  userId         String
+  posts          JobPost[]
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("jobs")
+}
+
+model JobPost {
+  id               String        @id @default(cuid())
+  facebookGroupUrl String
+  postUrl          String?
+  status           PostStatus
+  errorMessage     String?
+  attemptNumber    Int           @default(1)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  jobId            String
+  job              Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  comments         PostComment[]
+  metrics          PostMetrics?
+
+  @@map("job_posts")
+}
+
+model PostComment {
+  id                  String         @id @default(cuid())
+  commentId           String
+  authorName          String?
+  authorId            String?
+  content             String
+  isInterested        Boolean        @default(false)
+  responseStatus      ResponseStatus @default(PENDING)
+  messengerLink       String?
+  messengerThreadId   String?
+  conversationStarted Boolean        @default(false)
+  lastInteractionAt   DateTime?
+  contextData         Json?
+  createdAt           DateTime       @default(now())
+  upddatedAt          DateTime       @updatedAt
+  postId              String
+  post                JobPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("post_comments")
+}
+
+model Candidate {
+  id                     Int                  @id @default(autoincrement())
+  name                   String
+  senderId               String
+  email                  String?
+  phone                  String?
+  experience             String?
+  skills                 String[]
+  resumeUrl              String?
+  resumeFileName         String?
+  resumeUploadedAt       DateTime?
+  eligibility            CandidateEligibility @default(PENDING)
+  notes                  String?
+  messengerConversation  Json?
+  conversationSummary    String?
+  screeningScore         Int?
+  keyStrengths           String[]
+  concerns               String[]
+  availableForInterview  Boolean              @default(false)
+  preferredInterviewTime String?
+  createdAt              DateTime             @default(now())
+  upddatedAt             DateTime             @updatedAt
+
+  @@map("candidates")
+}
+
+model ConversationMessage {
+  id             String   @id @default(cuid())
+  threadId       String
+  messageId      String
+  sender         String
+  content        String
+  messageType    String   @default("text")
+  timestamp      DateTime
+  attachmentUrl  String?
+  attachmentType String?
+  createdAt      DateTime @default(now())
+
+  @@map("conversation_messages")
+}
+
+model PostMetrics {
+  id              String   @id @default(cuid())
+  totalComments   Int      @default(0)
+  interestedCount Int      @default(0)
+  respondedCount  Int      @default(0)
+  eligibleCount   Int      @default(0)
+  views           Int      @default(0)
+  reactions       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  postId          String   @unique
+  post            JobPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("post_metrics")
+}
+
+model JobContextSession {
+  id                  Int      @id @default(autoincrement())
+  sessionToken        String   @unique
+  jobPostId           String?
+  contextData         Json
+  facebookUserId      String?
+  conversationStarted Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  lastAccessedAt      DateTime @default(now())
+  expiresAt           DateTime @default(dbgenerated("(now() + '24:00:00'::interval)"))
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([sessionToken])
+  @@index([facebookUserId])
+  @@index([isActive, expiresAt])
+  @@map("job_context_sessions")
+}
+
+model ConversationStore {
+  id       Int    @id @default(autoincrement())
+  senderId String @map("sender_id")
+  content  String
+
+  @@map("conversation_store")
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+  FREELANCE
+}
+
+enum PostStatus {
+  PENDING
+  POSTING
+  SUCCESS
+  FAILED
+  MONITORING
+}
+
+enum ResponseStatus {
+  PENDING
+  SENT
+  FAILED
+  NO_RESPONSE_NEEDED
+}
+
+enum CandidateEligibility {
+  PENDING
+  MOST_ELIGIBLE
+  ELIGIBLE
+  NOT_ELIGIBLE
+  SHORTLISTED
+}

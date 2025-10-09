@@ -1,0 +1,23 @@
+# render.yaml - Render deployment configuration
+services:
+  - type: web
+    name: fbauto-backend
+    env: node
+    buildCommand: |
+      npm install
+      cd server && npm install
+      npx prisma generate --schema=server/prisma/schema.prisma
+      npx playwright install chromium
+    startCommand: node server/src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HEADLESS
+        value: true
+      - key: DEBUG
+        value: false
+      - key: SLOWMO
+        value: 0
+      - key: PORT
+        value: 5000
+      # Add your other environment variables in Render dashboard

@@ -1,0 +1,26 @@
+{
+  "name": "fbauto-production",
+  "version": "1.0.0",
+  "description": "Facebook Job Posting Automation - Production Ready",
+  "main": "server/src/index.js",
+  "scripts": {
+    "start": "node server/src/index.js",
+    "build": "npx prisma generate --schema=server/prisma/schema.prisma",
+    "deploy:railway": "railway deploy",
+    "deploy:render": "echo 'Push to GitHub and deploy via Render dashboard'",
+    "postinstall": "npm run build && npx playwright install chromium"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "node-cron": "^4.2.1",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.3.0",
+    "playwright": "^1.55.0"
+  }
+}
