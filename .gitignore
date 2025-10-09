@@ -1,0 +1,7 @@
+# Node
+node_modules/
+.DS_Store
+# Archives
+*.zip
+*.mp4
+*.docx

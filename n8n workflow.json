@@ -1,0 +1,987 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "webhook-test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -848,
+        112
+      ],
+      "id": "71f4cbf6-59dd-4855-a5ce-636ddf118f7e",
+      "name": "Webhook",
+      "webhookId": "6d9eea49-c3fd-48f0-a918-3126ac0ab33d"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3992ff03-9a97-48f5-8a59-70c7f3890bcc",
+              "leftValue": "={{ $json.query['hub.mode'] }}",
+              "rightValue": "subscribe",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "b390b18d-5050-49e3-86f7-8d25d7109cf8",
+              "leftValue": "={{ $json.query['hub.verify_token'] }}",
+              "rightValue": "n8n-auto-messanger",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -272,
+        48
+      ],
+      "id": "60a42ea5-8c9f-4cdb-81e5-0078e4afe3de",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0736b1b3-5dee-4bfc-a787-8d0d071046f8",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=USER MESSAGE:\n{{ $json.messages[0].content }}",
+        "options": {
+          "systemMessage": "=# AI Candidate Screening System Prompt\n\n{{ $json.systemPrompt }}\n\n## Previous Conversation:\n{{ $json.messages.slice(0, -1).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\\n\\n') }}\n\n## Current User Message:\n\"{{ $json.currentMessage }}\"\n\n## Job Context:\n- **Position**: {{ $json.jobContext.contextData.jobTitle }}\n- **Company**: {{ $json.jobContext.contextData.company }}\n- **Location**: {{ $json.jobContext.contextData.location }}\n- **Type**: {{ $json.jobContext.contextData.jobType }}\n- **Salary**: {{ $json.jobContext.contextData.salaryRange }}\n- **Requirements**: {{ $json.jobContext.contextData.requirements }}\n- **Description**: {{ $json.jobContext.contextData.description }}\n- **Perks**: {{ $json.jobContext.contextData.perks }}\n\n## Question Strategy Framework:\nBased on the job requirements above, ask questions in this strategic order. **Count the AI questions already asked in the conversation history** to determine which phase you're in:\n\n### Phase 1: Basic Information (Questions 1-2)\n- Question 1: Ask for candidate's name (\"Hi! I'm excited to learn more about you for this {{ $json.jobContext.contextData.jobTitle }} position. Could you please start by telling me your name?\")\n- Question 2: Ask about overall experience in {{ $json.jobContext.contextData.jobTitle }} or related field\n\n### Phase 2: Core Experience Assessment (Questions 3-6)\n- Question 3: Specific experience with the MOST CRITICAL requirement: \"{{ $json.jobContext.contextData.requirements[0] }}\"\n- Question 4: Overall years of relevant experience and career progression\n- Question 5: Experience with \"{{ $json.jobContext.contextData.requirements[1] }}\" (second requirement)\n- Question 6: Are you legally entitled to work in the United Kingdom?\n\n### Phase 3: Technical Skills Deep Dive (Questions 7-9)\n- Question 7: Knowledge of \"{{ $json.jobContext.contextData.requirements[2] }}\" (third requirement)\n- Question 8: Experience with \"{{ $json.jobContext.contextData.requirements[3] }}\" or similar technologies\n- Question 9: Problem-solving scenario related to {{ $json.jobContext.contextData.jobTitle }} challenges\n\n### Phase 4: Career Alignment (Question 10)\n- Question 10: Career goals alignment with this {{ $json.jobContext.contextData.jobTitle }} position at {{ $json.jobContext.contextData.company }}\n\n### Phase 5: Contact & Document Collection (Questions 11-13)\n- Question 11: Ask for email address for communication\n- Question 12: Ask for phone number for follow-up calls\n- Question 13: Ask for resume/CV URL or LinkedIn profile link\n\n### Phase 6: Final Wrap-up (Question 14)\n- Final wrap-up message mentioning \"we'll review your application\" and \"get back to you within 2-3 business days\"\n\n## Critical Instructions:\n\n1. **Question Tracking**: Count the number of questions YOU (the AI) have asked in the conversation history. Ask the next question in the appropriate phase.\n\n2. **Final Phase Management**: \n   - Question 1: Ask for name (\"Hi! I'm excited to learn more about you for this {{ $json.jobContext.contextData.jobTitle }} position. Could you please start by telling me your name?\")\n   - Question 11: Ask for email address (\"Could you please share your email address so we can contact you about next steps?\")\n   - Question 12: Ask for phone number (\"What's the best phone number to reach you on for follow-up calls?\")\n   - Question 13: Ask for resume/CV (\"Could you please share your resume URL, LinkedIn profile, or upload your CV for our records?\")\n   - Question 14: MUST end with wrap-up message that includes BOTH \"we'll review your application\" AND \"get back to you within 2-3 business days\"\n\n3. **Job-Relevant Focus**: Every question must relate directly to the {{ $json.jobContext.contextData.jobTitle }} role and the specific requirements: {{ $json.jobContext.contextData.requirements.join(', ') }}\n\n4. **No Repetition Rule**: \n   - Before asking any question, check if similar information was already discussed\n   - If a topic was covered, move to the next logical question\n   - Never ask about the same skill/experience twice\n\n5. **Mandatory Ending Format**: When you reach question 14, you MUST end with exactly this type of message:\n   ```\n   \"Thank you for sharing your resume, [Name]! We have received your application and will review it carefully. Our team will get back to you within 2-3 business days with next steps. Have a great day!\"\n   ```\n\n6. **Dynamic Question Examples Based on Current Job**:\n   - {{ $json.jobContext.contextData.jobTitle }} Experience: \"Tell me about your experience with {{ $json.jobContext.contextData.requirements[0] }}\"\n   - Technical Skills: \"How familiar are you with {{ $json.jobContext.contextData.requirements[1] }}?\"\n   - Practical Application: \"Can you describe a project where you used {{ $json.jobContext.contextData.requirements[2] }}?\"\n   - Advanced Knowledge: \"What's your experience with {{ $json.jobContext.contextData.requirements[3] }}?\"\n\n## Assessment Guidelines:\n- Keep responses short (2-3 sentences max)\n- Be professional but friendly and conversational\n- Focus on {{ $json.jobContext.contextData.jobTitle }}-specific experience and skills\n- Tailor questions to {{ $json.jobContext.contextData.company }} and the {{ $json.jobContext.contextData.jobType }} role\n- Ask ONE specific question at a time\n\n7. **Response Format**:\n   ```\n   [1-sentence acknowledgment of their previous answer]\n   [Next strategic question based on {{ $json.jobContext.contextData.jobTitle }} requirements and conversation phase]\n   ```\n\n## **MANDATORY OUTPUT FORMAT:**\n\n**YOU MUST ALWAYS RESPOND IN JSON FORMAT. NO EXCEPTIONS.**\n\nEvery single response must be in this exact JSON structure:\n\n```json\n{\n  \"message\": \"[Your complete response message here]\",\n  \"shouldProceed\": true/false,\n  \"shouldStore\": false/true,\n  \"isComplete\": false/true\n}\n```\n\n## **Field Logic Rules:**\n\n- **Questions 1-13**: Always set:\n  ```json\n  {\n    \"shouldProceed\": true,\n    \"shouldStore\": false,\n    \"isComplete\": false\n  }\n  ```\n\n- **Question 14 (Final wrap-up after resume received)**: Always set:\n  ```json\n  {\n    \"shouldProceed\": true,\n    \"shouldStore\": true,\n    \"isComplete\": true\n  }\n  ```\n\n## **JSON Response Examples:**\n\n**For Questions 1-13:**\n```json\n{\n  \"message\": \"Hi! I'm excited to learn more about you for this Software Engineer position. Could you please start by telling me your name?\",\n  \"shouldProceed\": true,\n  \"shouldStore\": false,\n  \"isComplete\": false\n}\n```\n\n**For Question 14 (Final Message after resume received):**\n```json\n{\n  \"message\": \"Thank you for sharing your resume, John! We have received your application and will review it carefully. Our team will get back to you within 2-3 business days with next steps. Have a great day!\",\n  \"shouldProceed\": true,\n  \"shouldStore\": true,\n  \"isComplete\": true\n}\n```\n\n## **CRITICAL REQUIREMENTS:**\n- NEVER respond with plain text - ALWAYS use JSON format\n- ALWAYS include \"message\", \"shouldProceed\", \"shouldStore\", and \"isComplete\" fields\n- Question 14 MUST have `\"shouldStore\": true` and `\"isComplete\": true` to trigger both message sending and database storage\n- All other responses MUST have `\"shouldStore\": false` and `\"isComplete\": false`\n\n**Remember**: \n- Question 1 = Ask for name, Question 11 = Ask for email, Question 12 = Ask for phone, Question 13 = Ask for resume/CV, Question 14 = End with \"we'll review your application\" and \"get back to you within 2-3 business days\" to trigger both message and storage\n\n**Every question should directly assess their fit for THIS specific {{ $json.jobContext.contextData.jobTitle }} position at {{ $json.jobContext.contextData.company }}. Use the job requirements as your question roadmap.**"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        192
+      ],
+      "id": "7d2ce638-b2d4-4b4f-af86-951e08a5b523",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v23.0/{{ $('Webhook').item.json.body.entry[0].messaging[0].recipient.id }}/messages?access_token=EAAUNrA8WQrUBPQeDHXkigggXhbpAGeosARIKmnCrUV6irioBzbV9RnZCd5qA6ixyZA2BGO0ulGsjnhhbKvB2Ji2pT5gQ396fp43s0S4qBmn8p7YzY0H946zw7NNS2EQ9ZBKabiyFve1upXYH1GOv8vPVgwo8bIetp9LLZAsHpzounNVD5g0YZBNdqFJRTOBnZBUW5QvwZDZD",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n\"recipient\": {\n\"id\": $('Webhook').item.json.body.entry[0].messaging[0].sender.id\n},\n\"messaging_type\": \"RESPONSE\",\n\"message\": {\n\"text\": $('Code3').item.json.message\n}\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1328,
+        64
+      ],
+      "id": "e4bf5839-48d0-434b-b8ed-448c8722ecbf",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.decodedContext }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "object",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "id": "ed66c44e-bf26-48a2-b4bb-3fe9326950ba"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "3b27e2fa-c9b2-4c07-8a19-5f9ac7baf036",
+                    "leftValue": "={{ $json.body.entry[0].messaging[0].sender }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "object",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -688,
+        368
+      ],
+      "id": "deff73ac-5695-4af5-ba72-aed44a616afd",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if this is a user message (not a delivery receipt or read receipt)\nconst body = $json.body;\nconst entry = body.entry?.[0];\nconst messaging = entry?.messaging?.[0];\n\n// Only process actual user messages\nif (messaging?.message?.text && !messaging?.delivery && !messaging?.read) {\n  return {\n    shouldRespond: true,\n    senderId: messaging.sender.id,\n    messageText: messaging.message.text,\n    timestamp: messaging.timestamp,\n    messageId: messaging.message.mid\n  };\n}\n\n// Don't respond to delivery receipts, read receipts, etc.\nreturn { shouldRespond: false };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -464,
+        240
+      ],
+      "id": "d3ab3935-71e4-4e74-9d44-51e4da293e82",
+      "name": "Code4"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        128,
+        448
+      ],
+      "id": "6112937f-d1bf-471f-9e2a-bd0038627fc6",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "3htQiB0UORiqjW46",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get current message data from Code4\nconst messageData = $('Code4').first().json;\nconst senderId = messageData.senderId;\nconst messageText = messageData.messageText;\n\n// Get job context from your job query (assuming you have job context from another PostgreSQL node)\n// Adjust this based on how you're getting job context - it should be the job details query\nconst jobContext = $('Execute a SQL query').first().json; // Your job context query result\n\n// Get conversation history from PostgreSQL memory\nconst conversationHistory = $('Execute a SQL query').all();\nlet messages = [];\n\nif (conversationHistory.length > 0 && conversationHistory[0].conversation) {\n  // Parse existing conversation\n  messages = Array.isArray(conversationHistory[0].conversation) ? \n             conversationHistory[0].conversation : \n             JSON.parse(conversationHistory[0].conversation);\n}\n\n// Add current user message\nmessages.push({\n  role: 'user',\n  content: messageText,\n  timestamp: new Date().toISOString(),\n  messageId: messageData.messageId\n});\n\n// Analyze conversation to see what info we've collected\nconst conversationText = messages.map(m => m.content).join(' ').toLowerCase();\nconst hasName = /my name is|i'm |i am |call me/i.test(conversationText) || /name.*?[a-z]{2,}/i.test(conversationText);\nconst hasEmail = /@/.test(conversationText) || /email/i.test(conversationText);\nconst hasPhone = /\\d{10}|\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4}|phone|mobile|number/i.test(conversationText);\nconst hasExperience = /year|experience|worked|month/i.test(conversationText);\n\n// Count user messages to determine conversation stage\nconst userMessageCount = messages.filter(m => m.role === 'user').length;\nlet systemPrompt = \"\";\n\n// Build job-specific requirements string\nconst requirementsText = jobContext.requirements && jobContext.requirements.length > 0 ? \n  jobContext.requirements.join(', ') : 'relevant experience';\n\n// First interaction - greeting and ask for name\nif (userMessageCount === 1) {\n  systemPrompt = `You are an AI recruiter for ${jobContext.company} hiring for a ${jobContext.jobTitle} position.\n  \n  Job Details:\n  - Position: ${jobContext.jobTitle}\n  - Company: ${jobContext.company}\n  - Type: ${jobContext.jobType}\n  - Location: ${jobContext.location}\n  - Salary: ${jobContext.salaryRange}\n  \n  Start by greeting the candidate warmly, briefly introduce yourself as a recruiter for ${jobContext.company}, and mention you're helping with their ${jobContext.jobTitle} application.\n  Then ask for their full name.\n  \n  Keep it friendly and conversational - 2-3 sentences max.`;\n\n// Collect missing basic information systematically\n} else if (userMessageCount <= 6) {\n  let nextQuestion = \"\";\n  \n  if (!hasName) {\n    nextQuestion = \"Could you please tell me your full name?\";\n  } else if (!hasEmail) {\n    nextQuestion = \"What's your email address so I can send you updates about your application?\";\n  } else if (!hasPhone) {\n    nextQuestion = \"Could you please provide your phone number for our records?\";\n  } else if (!hasExperience) {\n    nextQuestion = `How many years of experience do you have that's relevant to the ${jobContext.jobTitle} role?`;\n  } else {\n    // All basic info collected, ask about skills and job-specific questions\n    nextQuestion = `Based on the requirements for this ${jobContext.jobTitle} position: ${requirementsText} - which of these do you have experience with?`;\n  }\n  \n  systemPrompt = `Continue the recruitment conversation for the ${jobContext.jobTitle} position at ${jobContext.company}.\n  \n  Information collected so far:\n  - Name: ${hasName ? \"✓ Collected\" : \"✗ Missing\"}\n  - Email: ${hasEmail ? \"✓ Collected\" : \"✗ Missing\"}  \n  - Phone: ${hasPhone ? \"✓ Collected\" : \"✗ Missing\"}\n  - Experience: ${hasExperience ? \"✓ Collected\" : \"✗ Missing\"}\n  \n  Next question to ask: \"${nextQuestion}\"\n  \n  Be conversational and friendly. If they provide the information, acknowledge it briefly then ask the next question.`;\n\n// Final screening questions - skills, availability, interest\n} else if (userMessageCount <= 8) {\n  systemPrompt = `Continue screening for the ${jobContext.jobTitle} role at ${jobContext.company}.\n  \n  You should have collected: name, email, phone, experience.\n  Now focus on:\n  - Specific skills related to: ${requirementsText}\n  - Availability (work schedule, start date)\n  - Why they're interested in ${jobContext.jobTitle} at ${jobContext.company}\n  - Any questions they have about the role\n  \n  Ask ONE question at a time, be conversational.`;\n  \n// Final stage - wrap up and next steps\n} else {\n  systemPrompt = `Final stage of screening for ${jobContext.jobTitle} at ${jobContext.company}.\n  \n  Job Requirements: ${requirementsText}\n  \n  You should have collected: name, email, phone, experience, skills, and availability.\n  \n  Summarize what you've learned and determine if they meet the basic requirements.\n  If they seem qualified, say: \"Thank you for providing all that information! You seem like a great fit for our ${jobContext.jobTitle} role at ${jobContext.company}. We'll review your application and get back to you within 2-3 business days with next steps.\"\n  \n  If not qualified, politely explain which key requirements they don't meet.`;\n}\n\nreturn {\n  senderId,\n  messages,\n  systemPrompt,\n  jobContext,\n  userMessageCount,\n  shouldEndConversation: userMessageCount >= 9, // Increased to allow more info collection\n  currentMessage: messageText,\n  collectedInfo: {\n    hasName,\n    hasEmail, \n    hasPhone,\n    hasExperience\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        336
+      ],
+      "id": "7504cc4b-b37f-46ef-9183-58890c3645c2",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = $input.first().json.output;\n\nconsole.log(\"Raw AI Output:\", aiOutput);\n\nlet parsed;\n\n// Try to find JSON in the AI output using multiple methods\nfunction findValidJson(text) {\n  // Method 1: Look for ```json code blocks\n  const jsonCodeBlockMatch = text.match(/```json\\s*([\\s\\S]*?)\\s*```/i);\n  if (jsonCodeBlockMatch) {\n    try {\n      const jsonStr = jsonCodeBlockMatch[1].trim();\n      const result = JSON.parse(jsonStr);\n      if (isValidAiResponse(result)) return result;\n    } catch (err) {\n      console.log(\"Failed to parse JSON from code block:\", err.message);\n    }\n  }\n  \n  // Method 2: Look for any ```code blocks (without json specifier)\n  const codeBlockMatch = text.match(/```\\s*([\\s\\S]*?)\\s*```/);\n  if (codeBlockMatch) {\n    try {\n      const jsonStr = codeBlockMatch[1].trim();\n      const result = JSON.parse(jsonStr);\n      if (isValidAiResponse(result)) return result;\n    } catch (err) {\n      console.log(\"Failed to parse JSON from generic code block:\", err.message);\n    }\n  }\n  \n  // Method 3: Look for JSON objects anywhere in text\n  const jsonObjectMatches = text.match(/\\{[\\s\\S]*?\\}/g);\n  if (jsonObjectMatches) {\n    for (const match of jsonObjectMatches) {\n      try {\n        const result = JSON.parse(match);\n        if (isValidAiResponse(result)) return result;\n      } catch (err) {\n        continue;\n      }\n    }\n  }\n  \n  // Method 4: Try parsing the entire text as JSON\n  try {\n    const result = JSON.parse(text);\n    if (isValidAiResponse(result)) return result;\n  } catch (err) {\n    // Not pure JSON\n  }\n  \n  return null;\n}\n\n// Validate if the parsed object has the required AI response structure\nfunction isValidAiResponse(obj) {\n  return obj && \n         typeof obj === 'object' && \n         typeof obj.message === 'string' && \n         typeof obj.shouldProceed === 'boolean' && \n         typeof obj.shouldStore === 'boolean' && \n         typeof obj.isComplete === 'boolean';\n}\n\n// Try to find valid JSON in the AI output\nparsed = findValidJson(aiOutput);\n\n// If no valid JSON found, create a fallback response\nif (!parsed) {\n  console.warn(\"No valid JSON found in AI output. Creating fallback response.\");\n  \n  // Create a fallback JSON response\n  parsed = {\n    message: aiOutput.trim(),\n    shouldProceed: true,\n    shouldStore: false,\n    isComplete: false\n  };\n  \n  console.log(\"Created fallback response:\", parsed);\n} else {\n  console.log(\"Successfully parsed JSON:\", parsed);\n}\n\n// Validate the final result\nif (!isValidAiResponse(parsed)) {\n  throw new Error(\"Invalid AI response structure. Missing required fields: message, shouldProceed, shouldStore, isComplete\");\n}\n\nreturn parsed;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        480
+      ],
+      "id": "74878d0c-3712-47b5-8ff4-bc2002c2ecc2",
+      "name": "Code3"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Candidtes Coversation Text: \n{{ $json.conversation }}\nSender Id: {{ $json.senderId }}\nYou are given a candidate's conversation text. \nExtract structured information and return ONLY a valid JSON object that matches this schema. \nSchema:\n{\n  \"id\": Number,   // Generate a unique number by taking the last 6 digits of senderId (if numeric) and multiply by a random integer (10–99). If senderId is not numeric, just return a random integer 100000–999999.\n  \"senderId\": String | null,\n  \"name\": String | null,\n  \"email\": String | null,\n  \"phone\": String | null,\n  \"experience\": String | null,\n  \"skills\": String[],\n  \"resumeUrl\": String | null,\n  \"resumeFileName\": String | null,\n  \"resumeUploadedAt\": String | null,\n  \"eligibility\": \"PENDING\",\n  \"notes\": String | null,\n  \"messengerConversation\": [{ \"sender_id\": null, \"content\": String, \"id\": null }],\n  \"conversationSummary\": String | null,\n  \"screeningScore\": Number | null,\n  \"keyStrengths\": String[],\n  \"concerns\": String[],\n  \"availableForInterview\": false,\n  \"preferredInterviewTime\": String | null,\n  \"createdAt\": ISODateString,\n  \"upddatedAt\": ISODateString,\n  \"commentId\": null,\n  \"comment\": null\n}\nRules:\n- For `id`: \n   - If `senderId` is numeric → take the last 6 digits of senderId and multiply by a random integer (10–99). \n   - If not numeric → just return a random integer between 100000–999999.\n- If a field is not provided, set it to null (or [] / false if boolean/array).\n- messengerConversation.content must contain the raw text you received.\n- conversationSummary is a short AI-generated summary.\n- screeningScore is an AI-estimated number 0–100.\n- `createdAt` and `upddatedAt` should always be set to the current timestamp in ISO format.\n- Output ONLY JSON. No extra text.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1312,
+        448
+      ],
+      "id": "c2698a9a-edb2-43fb-989d-8fd98a14b5ac",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        752
+      ],
+      "id": "e8c6125f-aecf-4890-8dab-f8fed7776ad3",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "3htQiB0UORiqjW46",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Code').item.json.senderId }}",
+        "contextWindowLength": 15
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        320,
+        400
+      ],
+      "id": "12609cec-5de1-48b5-859a-87d8a26165f7",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "5eNtV0vM8urR9ONc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "conversation_store",
+          "mode": "list",
+          "cachedResultName": "conversation_store"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "sender_id": "={{ $('Code').item.json.senderId }}",
+            "content": "={{ $('Code').item.json.messages[0].content }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "sender_id",
+              "displayName": "sender_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        704,
+        480
+      ],
+      "id": "6f7fd673-d029-440f-a806-b7e64f67186a",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "5eNtV0vM8urR9ONc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: an array of items with sender_id, content, etc.\nconst items = $input.all();\n$input.first().json.sender_id\n// Extract all 'content' values\nconst messages = items.map(item => item.json.content);\n\n// Join them into one string with gaps (you can use \"\\n\\n\" or just a space)\nconst combined = messages.join(\" \");\n\n// Return as JSON for the next node\nreturn [{\n  json: {\n    senderId: $input.first().json.sender_id,\n    conversation: combined\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        576
+      ],
+      "id": "639b6cf6-bdf2-4bf4-9465-b1c94c6c6b0a",
+      "name": "Code5"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM conversation_store WHERE sender_id = {{ $json.sender_id }}::text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1056,
+        320
+      ],
+      "id": "77365313-ac07-416d-8264-217b3c7e704f",
+      "name": "conversation data",
+      "credentials": {
+        "postgres": {
+          "id": "5eNtV0vM8urR9ONc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the AI output\nconst aiOutput = $input.first().json.output\n\n// Remove ```json and ``` wrappers if they exist\nconst cleaned = aiOutput.replace(/```json|```/g, \"\").trim();\n\n// Parse into JSON\nconst parsed = JSON.parse(cleaned);\n\n// Return the parsed JSON so it can be used in the next node\nreturn parsed;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        448
+      ],
+      "id": "0629eff5-a25e-4900-be49-f5c7e35a537b",
+      "name": "Code6"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "candidates",
+          "mode": "list",
+          "cachedResultName": "candidates"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "availableForInterview": "={{ $json.availableForInterview }}",
+            "id": "={{ $json.id }}",
+            "screeningScore": "={{ $json.screeningScore }}",
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "phone": "={{ $json.phone }}",
+            "experience": "={{ $json.experience }}",
+            "skills": "={{ $json.skills }}",
+            "resumeUrl": "={{ $json.resumeUrl }}",
+            "eligibility": "={{ $json.eligibility }}",
+            "notes": "={{ $json.notes }}",
+            "messengerConversation": "={{ $json.messengerConversation[0] }}",
+            "upddatedAt": "={{ $json.upddatedAt }}",
+            "concerns": "={{ $json.concerns }}",
+            "conversationSummary": "={{ $json.conversationSummary }}",
+            "keyStrengths": "={{ $json.keyStrengths }}",
+            "preferredInterviewTime": "={{ $json.preferredInterviewTime }}",
+            "senderId": "={{ $json.senderId }}",
+            "resumeFileName": "={{ $json.resumeFileName }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "experience",
+              "displayName": "experience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "skills",
+              "displayName": "skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "resumeUrl",
+              "displayName": "resumeUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "eligibility",
+              "displayName": "eligibility",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "options",
+              "canBeUsedToMatch": true,
+              "options": [
+                {
+                  "name": "SHORTLISTED",
+                  "value": "SHORTLISTED"
+                },
+                {
+                  "name": "NOT_ELIGIBLE",
+                  "value": "NOT_ELIGIBLE"
+                },
+                {
+                  "name": "ELIGIBLE",
+                  "value": "ELIGIBLE"
+                },
+                {
+                  "name": "MOST_ELIGIBLE",
+                  "value": "MOST_ELIGIBLE"
+                },
+                {
+                  "name": "PENDING",
+                  "value": "PENDING"
+                }
+              ]
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "messengerConversation",
+              "displayName": "messengerConversation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "createdAt",
+              "displayName": "createdAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "upddatedAt",
+              "displayName": "upddatedAt",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "availableForInterview",
+              "displayName": "availableForInterview",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "concerns",
+              "displayName": "concerns",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "conversationSummary",
+              "displayName": "conversationSummary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "keyStrengths",
+              "displayName": "keyStrengths",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "array",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "preferredInterviewTime",
+              "displayName": "preferredInterviewTime",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "resumeFileName",
+              "displayName": "resumeFileName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "resumeUploadedAt",
+              "displayName": "resumeUploadedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "screeningScore",
+              "displayName": "screeningScore",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "senderId",
+              "displayName": "senderId",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1856,
+        448
+      ],
+      "id": "c19f9ecc-aa70-4d7a-a8f2-6607ab1a5e8d",
+      "name": "Insert rows in a table1",
+      "credentials": {
+        "postgres": {
+          "id": "5eNtV0vM8urR9ONc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM job_context_sessions\nORDER BY id DESC\nLIMIT 1;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -240,
+        240
+      ],
+      "id": "8a12ad73-5597-427a-97a5-aab517a1e117",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "5eNtV0vM8urR9ONc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c42f0dfa-89e2-4f1e-a62b-2197460ec8f4",
+              "leftValue": "={{ $('Code3').item.json.shouldProceed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        176
+      ],
+      "id": "cb931cc3-620e-4540-8541-ac4124def2cd",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "08cbddb1-02e2-4123-b0af-34afdd585280",
+              "leftValue": "={{ $('Code3').item.json.shouldStore }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        336
+      ],
+      "id": "39e299f7-40ad-4bdf-8626-60a1d2a0f24b",
+      "name": "If2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code4": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code3": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code5": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "conversation data": {
+      "main": [
+        [
+          {
+            "node": "Code5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code6": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "conversation data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "167c0d9c-15f7-4bec-85f7-5b0bea9b4684",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9b2eb92ef7c6c9d7e8c2f04470f72a87b8fc451b447b75bec46d29f5b08f3e88"
+  },
+  "id": "oJ4aTomRWoQCJ7jm",
+  "tags": []
+}
