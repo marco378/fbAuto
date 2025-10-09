@@ -58,10 +58,48 @@ export const createJob = async (req, res) => {
 
     console.log(`Job created: ${job.title} at ${job.company} (ID: ${job.id})`);
 
-    res.status(201).json({
-      message: "Job created successfully",
-      job,
-    });
+    // Auto-trigger job posting if autoPost is enabled
+    if (autoPost && facebookGroups.length > 0) {
+      console.log(`🚀 Auto-posting enabled for job ${job.id}, triggering automation...`);
+      
+      try {
+        // Use hardcoded credentials for automation
+        const credentials = {
+          email: "airecuritement@gmail.com",
+          password: "Varunsh@123",
+        };
+
+        // Trigger job posting automation in background
+        setImmediate(async () => {
+          try {
+            const result = await runJobPostAutomation(credentials, job);
+            console.log(`✅ Auto-posting completed for job ${job.id}:`, result.stats);
+          } catch (autoPostError) {
+            console.error(`❌ Auto-posting failed for job ${job.id}:`, autoPostError.message);
+          }
+        });
+
+        res.status(201).json({
+          message: "Job created successfully and automation triggered",
+          job,
+          autoPostTriggered: true,
+        });
+      } catch (error) {
+        console.error(`⚠️ Failed to trigger automation for job ${job.id}:`, error.message);
+        res.status(201).json({
+          message: "Job created successfully but automation failed to trigger",
+          job,
+          autoPostTriggered: false,
+          error: error.message,
+        });
+      }
+    } else {
+      res.status(201).json({
+        message: "Job created successfully",
+        job,
+        autoPostTriggered: false,
+      });
+    }
   } catch (error) {
     console.error("Create job error:", error);
     res.status(500).json({ error: error.message });
