@@ -26,8 +26,9 @@ app.use(
     origin: [
       "http://localhost:3000",             // local dev
       "https://fb-auto-client.vercel.app", // old deployed frontend
-      "https://fb-auto-phi.vercel.app",    // new deployed frontend
-      "https://fb-auto-git-main-audaces-projects-907ed43e.vercel.app" // current frontend
+      "https://fb-auto-phi.vercel.app",    // custom domain
+      "https://fb-auto-git-main-audaces-projects-907ed43e.vercel.app", // old deployment
+      "https://fb-auto-dul6fs4ou-audaces-projects-907ed43e.vercel.app" // current deployment
     ],
     credentials: true, // IMPORTANT: allow cookies
   })
