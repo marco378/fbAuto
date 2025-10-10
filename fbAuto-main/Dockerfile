@@ -10,21 +10,21 @@ WORKDIR /app
 # Expos# Expose your app's port
 EXPOSE 5000
 
-# Create a minimal startup script for testing
+# Create an ultra minimal startup script for testing
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-echo "Starting minimal application for testing..."\n\
+echo "Starting ultra minimal application..."\n\
 \n\
 # Navigate to server directory\n\
 cd /app/server\n\
 \n\
-# Start the minimal application\n\
-echo "Starting minimal Node.js server..."\n\
-exec node src/index.minimal.js' > /app/start-minimal.sh && chmod +x /app/start-minimal.sh
+# Start the ultra minimal application\n\
+echo "Starting ultra minimal Node.js server..."\n\
+exec node src/index.ultra.js' > /app/start-ultra.sh && chmod +x /app/start-ultra.sh
 
-# Use the minimal startup script
-CMD ["/app/start-minimal.sh"]r app's port
+# Use the ultra minimal startup script
+CMD ["/app/start-ultra.sh"]r app's port
 EXPOSE 5000
 
 # Create a startup script that handles database setup
