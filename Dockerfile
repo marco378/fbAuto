@@ -16,6 +16,10 @@ COPY fbAuto-main/server/package*.json ./
 # Install production dependencies
 RUN npm install --production
 
+# Install Playwright browsers and dependencies
+RUN npx playwright install-deps
+RUN npx playwright install chromium
+
 # Copy the server source code
 COPY fbAuto-main/server/src ./src
 
