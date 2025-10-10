@@ -49,7 +49,7 @@ model FacebookCredentials {
 }
 
 model Job {
-  id             String       @id @default(cuid())
+  id             String    @id @default(cuid())
   title          String
   company        String
   location       String
@@ -60,14 +60,13 @@ model Job {
   requirements   String[]
   responsibities String[]
   perks          String?
-  isActive       Boolean      @default(true)
-  facebookGroups String[]     @default([])
-  createdAt      DateTime     @default(now())
-  upddatedAt     DateTime     @updatedAt
+  isActive       Boolean   @default(true)
+  facebookGroups String[]  @default([])
+  createdAt      DateTime  @default(now())
+  upddatedAt     DateTime  @updatedAt
   userId         String
   posts          JobPost[]
-  jobContexts    JobContext[]
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("jobs")
 }
@@ -223,28 +222,4 @@ enum CandidateEligibility {
   ELIGIBLE
   NOT_ELIGIBLE
   SHORTLISTED
-}
-
-model Conversation {
-  id          String   @id @default(cuid())
-  senderId    String
-  userMessage String
-  aiResponse  String
-  sessionId   String
-  timestamp   DateTime @default(now())
-  createdAt   DateTime @default(now())
-
-  @@map("conversations")
-}
-
-model JobContext {
-  id          String   @id @default(cuid())
-  sessionId   String   @unique
-  contextData Json
-  jobId       String?
-  job         Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("job_contexts")
 }

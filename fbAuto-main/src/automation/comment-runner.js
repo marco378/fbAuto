@@ -258,22 +258,16 @@ function containsInterestKeywords(commentText) {
   return hasInterestKeyword;
 }
 
-// Get comment text with fallback selectors and better error handling
+// Get comment text with fallback selectors
 async function getCommentText(commentContainer) {
   for (const selector of CommentSelectors.commentText) {
     try {
       const textElement = commentContainer.locator(selector).first();
-      
-      // Wait for element to be stable before getting text
-      await textElement.waitFor({ state: 'attached', timeout: 3000 });
-      
-      const text = await textElement.textContent({ timeout: 5000 });
+      const text = await textElement.textContent({ timeout: 2000 });
       if (text && text.trim()) {
         return text.trim();
       }
     } catch (error) {
-      // Skip this selector and try the next one
-      console.log(`⚠️ Selector ${selector} failed: ${error.message}`);
       continue;
     }
   }
@@ -447,30 +441,19 @@ async function findReplyButton(commentContainer, page) {
 
                 // If button is within reasonable distance (300px), it's likely the right one
                 if (distance < 300) {
-                  // Wait for button to be stable before getting text
-                  try {
-                    await button.waitFor({ state: 'attached', timeout: 2000 });
-                    const buttonText = await button.textContent({ timeout: 3000 });
-                    
-                    if (
-                      buttonText && (
-                        buttonText.toLowerCase().includes("reply") ||
-                        buttonText === "Reply" ||
-                        i >= 6
-                      )
-                    ) {
-                      console.log(
-                        `✅ Found nearby reply button with selector ${i + 1}`
-                      );
-                      return button;
-                    }
-                  } catch (textError) {
-                    console.log(`⚠️ Could not get button text: ${textError.message}`);
-                    // If we can't get text but it's the 7th selector, assume it's the reply button
-                    if (i >= 6) {
-                      console.log(`✅ Using fallback reply button (selector ${i + 1})`);
-                      return button;
-                    }
+                  const buttonText = await button
+                    .textContent({ timeout: 1000 })
+                    .catch(() => "");
+
+                  if (
+                    buttonText.toLowerCase().includes("reply") ||
+                    buttonText === "Reply" ||
+                    i >= 6
+                  ) {
+                    console.log(
+                      `✅ Found nearby reply button with selector ${i + 1}`
+                    );
+                    return button;
                   }
                 }
               }
@@ -561,12 +544,8 @@ async function shouldSkipComment(
     const commentAuthorElement = commentContainer
       .locator(CommentSelectors.commentAuthor)
       .first();
-    
-    // Wait for author element to be stable
-    await commentAuthorElement.waitFor({ state: 'attached', timeout: 3000 });
-    
     const commentAuthor = await commentAuthorElement.textContent({
-      timeout: 5000,
+      timeout: 2000,
     });
 
     if (
@@ -582,7 +561,7 @@ async function shouldSkipComment(
       };
     }
   } catch (error) {
-    console.log(`⚠️ Could not get comment author: ${error.message}, continuing...`);
+    console.log(`⚠️ Could not get comment author, continuing...`);
   }
 
   return { skip: false, reason: null };
@@ -722,24 +701,13 @@ async function processPostComments(page, postUrl, jobPost) {
     console.log(`📝 Processing comments for post: ${postUrl}`);
     console.log(`📋 Job: ${jobPost.job.title} at ${jobPost.job.company}`);
 
-    // Navigate to the post with better wait conditions
+    // Navigate to the post
     await page.goto(postUrl, {
-      waitUntil: "networkidle",
-      timeout: 45000,
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
     });
 
-    // Wait for page to fully stabilize
-    await humanPause(5000, 8000);
-    
-    // Wait for comment containers to be stable
-    try {
-      await page.waitForSelector(CommentSelectors.commentContainer, { 
-        timeout: 10000,
-        state: 'visible'
-      });
-    } catch (error) {
-      console.log('⚠️ No comment containers found, post may have no comments');
-    }
+    await humanPause(3000, 5000);
 
     // Get current user name to avoid replying to own comments
     const currentUserName = await getCurrentUserName(page);
@@ -781,14 +749,11 @@ async function processPostComments(page, postUrl, jobPost) {
       jobContext
     );
 
-    // Process each comment with individual error handling
+    // Process each comment
     for (let i = 0; i < commentCount; i++) {
       try {
         console.log(`\n🔄 Processing comment ${i + 1}/${commentCount}`);
         const commentContainer = commentContainers.nth(i);
-
-        // Wait for comment to be stable
-        await commentContainer.waitFor({ state: 'attached', timeout: 5000 });
 
         // Get comment text using fallback selectors
         const commentText = await getCommentText(commentContainer);
@@ -884,22 +849,11 @@ async function getMyPostedContent(page, groupUrl) {
     console.log(`📂 Navigating to: ${myContentUrl}`);
 
     await page.goto(myContentUrl, {
-      waitUntil: "networkidle",
-      timeout: 45000,
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
     });
 
-    // Wait for page to stabilize completely
-    await humanPause(5000, 8000);
-
-    // Wait for content to load before looking for buttons
-    try {
-      await page.waitForSelector('a:has-text("View in Group"), button:has-text("View in Group")', { 
-        timeout: 10000 
-      });
-    } catch (error) {
-      console.log('⚠️ No "View in Group" buttons found - no recent posts to monitor');
-      return [];
-    }
+    await humanPause(3000, 5000);
 
     // Look for "View in Group" buttons
     const viewInGroupButtons = page.locator(

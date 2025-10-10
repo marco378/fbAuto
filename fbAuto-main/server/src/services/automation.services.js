@@ -154,22 +154,6 @@ class AutomationService {
     try {
       console.log("🔄 Processing all pending jobs...");
 
-      // First, let's get ALL jobs to debug
-      const allJobs = await prisma.job.findMany({
-        where: { isActive: true },
-        include: {
-          posts: true,
-          user: { select: { id: true, email: true } }
-        },
-        take: 5
-      });
-
-      console.log(`📊 Total active jobs in database: ${allJobs.length}`);
-      
-      for (const job of allJobs) {
-        console.log(`📋 Job ${job.id}: "${job.title}" - Groups: ${job.facebookGroups?.length || 0}, Posts: ${job.posts.length}, Successful posts: ${job.posts.filter(p => p.status === 'SUCCESS').length}`);
-      }
-
       // Get all users who have pending jobs
       const pendingJobs = await prisma.job.findMany({
         where: {
@@ -198,33 +182,6 @@ class AutomationService {
 
       if (pendingJobs.length === 0) {
         console.log("✅ No pending jobs found");
-        
-        // Debug: Check if there are jobs with empty facebookGroups
-        const jobsWithoutGroups = await prisma.job.findMany({
-          where: {
-            isActive: true,
-            facebookGroups: { isEmpty: true }
-          },
-          take: 3
-        });
-        
-        if (jobsWithoutGroups.length > 0) {
-          console.log(`⚠️ Found ${jobsWithoutGroups.length} jobs without Facebook groups`);
-        }
-        
-        // Debug: Check if there are jobs with successful posts
-        const jobsWithSuccessfulPosts = await prisma.job.findMany({
-          where: {
-            isActive: true,
-            posts: { some: { status: "SUCCESS" } }
-          },
-          take: 3
-        });
-        
-        if (jobsWithSuccessfulPosts.length > 0) {
-          console.log(`✅ Found ${jobsWithSuccessfulPosts.length} jobs with successful posts (already processed)`);
-        }
-        
         return {
           success: true,
           message: "No pending jobs found",
@@ -321,16 +278,7 @@ class AutomationService {
 
     } catch (error) {
       console.error("❌ Batch processing failed:", error.message);
-      return {
-        success: false,
-        message: `Batch processing failed: ${error.message}`,
-        processedJobs: [],
-        stats: {
-          total: 0,
-          successful: 0,
-          failed: 0
-        }
-      };
+      throw error;
     }
   }
 
