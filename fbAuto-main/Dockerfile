@@ -44,9 +44,10 @@ COPY . .
 # ✅ Copy cookies folder explicitly
 COPY server/cookies ./cookies
 
-# Install server-specific dependencies if package.json exists
+# Install server-specific dependencies and generate Prisma client
 WORKDIR /app/server
 RUN [ -f package.json ] && npm install || echo "No server-specific package.json found"
+RUN npx prisma generate
 
 # Back to root
 WORKDIR /app
