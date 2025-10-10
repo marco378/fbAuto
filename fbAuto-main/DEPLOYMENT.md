@@ -9,7 +9,7 @@
 
 ## Environment Variables to add in Railway:
 ```
-DATABASE_URL=your_neon_db_url
+DATABASE_URL=postgresql://neondb_owner:npg_aAntD3j1YCGh@ep-cool-meadow-adpg4rse-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
 FACEBOOK_EMAIL=airecuritement@gmail.com
 FACEBOOK_PASSWORD=Varunsh@123
 FACEBOOK_VERIFY_TOKEN=n8n-auto-messanger

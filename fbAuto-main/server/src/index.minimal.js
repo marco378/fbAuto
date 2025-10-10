@@ -20,7 +20,6 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
-      "https://fb-auto-client.vercel.app",
       "https://fb-auto-phi.vercel.app"
     ],
     credentials: true,
