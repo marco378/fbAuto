@@ -1,6 +1,6 @@
 // src/services/comment-scheduler.js
 import cron from 'node-cron';
-import { runCommentMonitoring, cleanupCommentMonitoring } from '../../../src/automation/comment-runner.js';
+import { runCommentMonitoring, cleanupCommentMonitoring } from '../../src/automation/comment-runner.js';
 import { prisma } from '../lib/prisma.js';
 
 class CommentScheduler {

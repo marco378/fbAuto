@@ -3,13 +3,6 @@ import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import { PORT } from './credentials.js';
-import router from './routes/index.js';
-import { automationService } from './services/automation.services.js';
-import { commentScheduler } from './services/comment-scheduler.js';
-import { jobPostScheduler } from './services/job-post-scheduler.js';
-import { messengerRedirectWithContext } from './routes/messanger-redirect.js';
-import contextRouter from './routes/job-context.js';
-import { handleMessengerWebhook } from './controllers/messanger-webhook.js';
 
 const app = express()
 
@@ -48,36 +41,81 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || "development",
-    services: {
-      server: "running",
-      automationService: automationService?.isInitialized || false,
-      commentScheduler: commentScheduler?.isInitialized || false,
-      jobPostScheduler: jobPostScheduler?.isInitialized || false
-    }
+    server: "running"
   };
   
   res.json(healthStatus);
 })
 
+// Import and setup other routes/services after basic setup
+let router, automationService, commentScheduler, jobPostScheduler;
+let messengerRedirectWithContext, contextRouter, handleMessengerWebhook;
+
+async function setupRoutes() {
+  try {
+    // Dynamic imports to avoid startup failures
+    const routerModule = await import('./routes/index.js');
+    router = routerModule.default;
+    
+    const automationModule = await import('./services/automation.services.js');
+    automationService = automationModule.automationService;
+    
+    const commentModule = await import('./services/comment-scheduler.js');
+    commentScheduler = commentModule.commentScheduler;
+    
+    const jobPostModule = await import('./services/job-post-scheduler.js');
+    jobPostScheduler = jobPostModule.jobPostScheduler;
+    
+    const messengerModule = await import('./routes/messanger-redirect.js');
+    messengerRedirectWithContext = messengerModule.messengerRedirectWithContext;
+    
+    const contextModule = await import('./routes/job-context.js');
+    contextRouter = contextModule.default;
+    
+    const webhookModule = await import('./controllers/messanger-webhook.js');
+    handleMessengerWebhook = webhookModule.handleMessengerWebhook;
+    
+    // Setup routes
+    app.use('/api', router);
+    app.use('/messenger-redirect', messengerRedirectWithContext);
+    app.use('/job-context', contextRouter);
+    app.get('/webhook/messenger', handleMessengerWebhook);
+    app.post('/webhook/messenger', handleMessengerWebhook);
+    
+    console.log('✅ Routes successfully loaded');
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to load routes:', error.message);
+    return false;
+  }
+}
+
 // Enhanced automation status endpoint with system stats
 app.get("/api/automation/status", async (req, res) => {
   try {
-    const serviceStatus = automationService.getServiceStatus();
-    const systemStats = await automationService.getSystemStats();
-    
-    res.json({
-      ...serviceStatus,
-      systemStats,
-      optimizations: {
-        approach: "Immediate self-reply after job posting",
-        benefits: [
-          "Reduced browser instances (60% less resource usage)",
-          "Immediate candidate engagement (0 delay vs 30min)",
-          "Simplified automation logic",
-          "Better user experience"
-        ]
-      }
-    });
+    if (automationService) {
+      const serviceStatus = automationService.getServiceStatus();
+      const systemStats = await automationService.getSystemStats();
+      
+      res.json({
+        ...serviceStatus,
+        systemStats,
+        optimizations: {
+          approach: "Immediate self-reply after job posting",
+          benefits: [
+            "Reduced browser instances (60% less resource usage)",
+            "Immediate candidate engagement (0 delay vs 30min)",
+            "Simplified automation logic",
+            "Better user experience"
+          ]
+        }
+      });
+    } else {
+      res.json({
+        status: "initializing",
+        message: "Automation service not yet loaded"
+      });
+    }
   } catch (error) {
     res.status(500).json({
       error: "Failed to get automation status",
@@ -157,14 +195,6 @@ app.post("/api/automation/process-all-jobs", async (req, res) => {
   }
 });
 
-app.use("/api", router)
-app.use("/api", contextRouter)
-app.get('/api/messenger-redirect', messengerRedirectWithContext);
-
-// Facebook Messenger webhook
-app.get('/webhook/messenger', handleMessengerWebhook);  // For verification
-app.post('/webhook/messenger', handleMessengerWebhook); // For receiving events
-
 async function startServer() {
   try {
     console.log('Starting optimized server...');
@@ -186,8 +216,11 @@ async function startServer() {
       process.exit(1);
     });
     
-    // Initialize services after server is running (non-blocking for health checks)
-    initializeServices();
+    // Setup routes and services after server is running (non-blocking for health checks)
+    setTimeout(async () => {
+      await setupRoutes();
+      await initializeServices();
+    }, 1000); // Small delay to ensure server is fully started
     
   } catch (error) {
     console.error('Failed to start server:', error);
@@ -196,6 +229,11 @@ async function startServer() {
 }
 
 async function initializeServices() {
+  if (!automationService || !commentScheduler || !jobPostScheduler) {
+    console.log('❌ Services not loaded, skipping initialization');
+    return;
+  }
+  
   try {
     console.log('Initializing services...');
     

@@ -1,7 +1,10 @@
 import express from 'express'
 import { verifyToken } from '../middlewares/auth.middleware.js'
 import { facebookCredentials, getAutomationStatus, getFacebookCredentials, getJobPostStatus, runCustomAutomation, runFacebookAutomation, runJobPostForAllUsers, stopFacebookAutomation, stopJobPostAutomation } from '../controllers/facebook.controller.js'
-import { runJobPostAutomation } from '../../../src/automation/job-post-runner.js'
+import express from 'express'
+import { prisma } from '../lib/prisma.js'
+import { authenticateJWT } from '../middlewares/auth.middleware.js'
+import { runJobPostAutomation } from '../../src/automation/job-post-runner.js'
 
 const facebookRouter = express.Router()
 
