@@ -29,7 +29,6 @@ RUN apt-get update && apt-get install -y \
 # Copy package.json files first for better Docker layer caching
 COPY package*.json ./
 COPY server/package*.json ./server/
-COPY server/prisma ./server/prisma/
 
 # Install root dependencies (for Playwright)
 RUN npm install
@@ -38,14 +37,16 @@ RUN npm install
 WORKDIR /app/server
 RUN npm install
 
-# Generate Prisma client
-RUN npx prisma generate
-
 # Back to root and copy rest of project
 WORKDIR /app
 COPY . .
 
+# Generate Prisma client (after copying project files)
+WORKDIR /app/server
+RUN npx prisma generate
+
 # Create cookies directories (gitignored)
+WORKDIR /app
 RUN mkdir -p ./cookies && mkdir -p ./server/cookies
 
 # Back to root
