@@ -32,16 +32,10 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy Prisma schema early for client generation
-COPY server/prisma ./server/prisma
-
-# Generate Prisma client
-RUN npx prisma generate --schema=server/prisma/schema.prisma
-
-# Copy the rest of the application code
+# Copy the entire project
 COPY . .
 
-# ✅ Create cookies directory if it doesn't exist (gitignored)
+# Create cookies directories (gitignored)
 RUN mkdir -p ./cookies && mkdir -p ./server/cookies
 
 # Install server-specific dependencies and generate Prisma client
