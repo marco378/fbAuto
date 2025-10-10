@@ -1,7 +1,8 @@
 {
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile"
+    "dockerfilePath": "server/Dockerfile",
+    "dockerContext": "server"
   },
   "deploy": {
     "startCommand": "npm start",
