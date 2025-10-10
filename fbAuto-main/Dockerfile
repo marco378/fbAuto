@@ -26,17 +26,14 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy only package files first (for caching)
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy the entire project
+# Copy the entire project first
 COPY . .
 
 # Create cookies directories (gitignored)
 RUN mkdir -p ./cookies && mkdir -p ./server/cookies
+
+# Install root dependencies if package.json exists (for Playwright)
+RUN [ -f package.json ] && npm install || echo "No root package.json found"
 
 # Install server-specific dependencies and generate Prisma client
 WORKDIR /app/server
