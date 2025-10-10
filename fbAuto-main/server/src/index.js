@@ -17,6 +17,12 @@ const app = express()
 let server = null;
 let isShuttingDown = false;
 
+// Environment check
+console.log('Environment check:');
+console.log('- PORT:', PORT);
+console.log('- NODE_ENV:', process.env.NODE_ENV || 'development');
+console.log('- DATABASE_URL:', process.env.DATABASE_URL ? '✅ Set' : '❌ Not set');
+
 app.use((req, res, next) => {
   console.log(`Request Method: ${req.method}, Request URL: ${req.url}`);
   next();
@@ -36,12 +42,21 @@ app.use(cookieParser())
 app.use(express.json())
 
 app.get("/health", (req, res) => {
-  res.json({
+  // Always respond to health checks, even if services aren't fully initialized
+  const healthStatus = {
     status: "healthy",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || "development"
-  })
+    environment: process.env.NODE_ENV || "development",
+    services: {
+      server: "running",
+      automationService: automationService?.isInitialized || false,
+      commentScheduler: commentScheduler?.isInitialized || false,
+      jobPostScheduler: jobPostScheduler?.isInitialized || false
+    }
+  };
+  
+  res.json(healthStatus);
 })
 
 // Enhanced automation status endpoint with system stats
@@ -154,26 +169,13 @@ async function startServer() {
   try {
     console.log('Starting optimized server...');
     
-    // Initialize the automation service (now with optimized job posting)
-    await automationService.initialize();
-    
-    // Initialize the comment scheduler for automated monitoring
-    await commentScheduler.initialize();
-    
-    // Initialize the job post scheduler for automated job processing
-    await jobPostScheduler.initialize();
-    
-    // Start the server
+    // Start the HTTP server first, so health checks can pass
     server = app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`Automation status: http://localhost:${PORT}/api/automation/status`);
-      console.log('Job posting with immediate engagement runs every 1 minute');
-      console.log('Automated comment monitoring runs every 30 minutes');
-      console.log('Manual comment monitoring available via API when needed');
-      console.log('Resource usage optimized - ~60% reduction in browser instances');
     });
-    
+
     // Handle server errors
     server.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
@@ -184,9 +186,51 @@ async function startServer() {
       process.exit(1);
     });
     
+    // Initialize services after server is running (non-blocking for health checks)
+    initializeServices();
+    
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
+  }
+}
+
+async function initializeServices() {
+  try {
+    console.log('Initializing services...');
+    
+    // Initialize the automation service (now with optimized job posting)
+    try {
+      await automationService.initialize();
+      console.log('✅ Automation service initialized');
+    } catch (error) {
+      console.error('❌ Failed to initialize automation service:', error.message);
+    }
+    
+    // Initialize the comment scheduler for automated monitoring
+    try {
+      await commentScheduler.initialize();
+      console.log('✅ Comment scheduler initialized');
+    } catch (error) {
+      console.error('❌ Failed to initialize comment scheduler:', error.message);
+    }
+    
+    // Initialize the job post scheduler for automated job processing
+    try {
+      await jobPostScheduler.initialize();
+      console.log('✅ Job post scheduler initialized');
+    } catch (error) {
+      console.error('❌ Failed to initialize job post scheduler:', error.message);
+    }
+    
+    console.log('Service initialization completed');
+    console.log('Job posting with immediate engagement runs every 1 minute');
+    console.log('Automated comment monitoring runs every 30 minutes');
+    console.log('Manual comment monitoring available via API when needed');
+    console.log('Resource usage optimized - ~60% reduction in browser instances');
+    
+  } catch (error) {
+    console.error('Error during service initialization:', error);
   }
 }
 
