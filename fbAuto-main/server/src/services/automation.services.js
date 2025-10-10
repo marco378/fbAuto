@@ -3,7 +3,6 @@ import { PrismaClient } from "@prisma/client";
 import { runAutomation, cleanup } from "../automation/runner.js";
 import {
   runJobPostAutomation,
-  runJobPostAutomationForUser,
 } from "../automation/job-post-runner.js";
 import { prisma } from "../lib/prisma.js";
 
