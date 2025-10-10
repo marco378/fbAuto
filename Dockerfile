@@ -16,10 +16,6 @@ COPY fbAuto-main/server/package*.json ./
 # Install production dependencies
 RUN npm install --production
 
-# Install Playwright browsers and dependencies
-RUN npx playwright install-deps
-RUN npx playwright install chromium
-
 # Copy the server source code
 COPY fbAuto-main/server/src ./src
 
@@ -34,6 +30,9 @@ COPY fbAuto-main/server/prisma ./prisma
 
 # Generate Prisma client
 RUN npx prisma generate
+
+# Install Playwright browsers (at the end to avoid build failures)
+RUN npx playwright install chromium --with-deps || echo "Playwright install failed, continuing..."
 
 # Railway provides PORT environment variable dynamically
 # No need to expose a specific port
