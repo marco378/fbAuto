@@ -1,7 +1,6 @@
 // controllers/jobController.js
 import { prisma } from "../lib/prisma.js";
-import { authenticateJWT } from "../middlewares/auth.middleware.js";
-import { runJobPostAutomation } from "../../src/automation/job-post-runner.js";
+import { runJobPostAutomation } from "../../../src/automation/job-post-runner.js";
 
 // Create a new job
 export const createJob = async (req, res) => {

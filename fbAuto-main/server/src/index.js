@@ -3,18 +3,19 @@ import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import { PORT } from './credentials.js';
+import router from './routes/index.js';
+import { automationService } from './services/automation.services.js';
+import { commentScheduler } from './services/comment-scheduler.js';
+import { jobPostScheduler } from './services/job-post-scheduler.js';
+import { messengerRedirectWithContext } from './routes/messanger-redirect.js';
+import contextRouter from './routes/job-context.js';
+import { handleMessengerWebhook } from './controllers/messanger-webhook.js';
 
 const app = express()
 
 // Track server state
 let server = null;
 let isShuttingDown = false;
-
-// Environment check
-console.log('Environment check:');
-console.log('- PORT:', PORT);
-console.log('- NODE_ENV:', process.env.NODE_ENV || 'development');
-console.log('- DATABASE_URL:', process.env.DATABASE_URL ? '✅ Set' : '❌ Not set');
 
 app.use((req, res, next) => {
   console.log(`Request Method: ${req.method}, Request URL: ${req.url}`);
@@ -26,8 +27,7 @@ app.use(
     origin: [
       "http://localhost:3000",             // local dev
       "https://fb-auto-client.vercel.app", // old deployed frontend
-      "https://fb-auto-phi.vercel.app",    // new deployed frontend
-      "https://fb-auto-git-main-audaces-projects-907ed43e.vercel.app" // current frontend
+      "https://fb-auto-phi.vercel.app"     // new deployed frontend
     ],
     credentials: true, // IMPORTANT: allow cookies
   })
@@ -36,87 +36,44 @@ app.use(cookieParser())
 app.use(express.json())
 
 app.get("/health", (req, res) => {
-  // Always respond to health checks, even if services aren't fully initialized
-  const healthStatus = {
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || "development",
-    server: "running"
-  };
-  
-  res.json(healthStatus);
-})
-
-// Import and setup other routes/services after basic setup
-let router, automationService, commentScheduler, jobPostScheduler;
-let messengerRedirectWithContext, contextRouter, handleMessengerWebhook;
-
-async function setupRoutes() {
   try {
-    // Dynamic imports to avoid startup failures
-    const routerModule = await import('./routes/index.js');
-    router = routerModule.default;
-    
-    const automationModule = await import('./services/automation.services.js');
-    automationService = automationModule.automationService;
-    
-    const commentModule = await import('./services/comment-scheduler.js');
-    commentScheduler = commentModule.commentScheduler;
-    
-    const jobPostModule = await import('./services/job-post-scheduler.js');
-    jobPostScheduler = jobPostModule.jobPostScheduler;
-    
-    const messengerModule = await import('./routes/messanger-redirect.js');
-    messengerRedirectWithContext = messengerModule.messengerRedirectWithContext;
-    
-    const contextModule = await import('./routes/job-context.js');
-    contextRouter = contextModule.default;
-    
-    const webhookModule = await import('./controllers/messanger-webhook.js');
-    handleMessengerWebhook = webhookModule.handleMessengerWebhook;
-    
-    // Setup routes
-    app.use('/api', router);
-    app.use('/messenger-redirect', messengerRedirectWithContext);
-    app.use('/job-context', contextRouter);
-    app.get('/webhook/messenger', handleMessengerWebhook);
-    app.post('/webhook/messenger', handleMessengerWebhook);
-    
-    console.log('✅ Routes successfully loaded');
-    return true;
+    res.json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || "development",
+      database: process.env.DATABASE_URL ? "configured" : "not configured",
+      port: PORT
+    })
   } catch (error) {
-    console.error('❌ Failed to load routes:', error.message);
-    return false;
+    console.error("Health check error:", error);
+    res.status(500).json({
+      status: "unhealthy",
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
-}
+})
 
 // Enhanced automation status endpoint with system stats
 app.get("/api/automation/status", async (req, res) => {
   try {
-    if (automationService) {
-      const serviceStatus = automationService.getServiceStatus();
-      const systemStats = await automationService.getSystemStats();
-      
-      res.json({
-        ...serviceStatus,
-        systemStats,
-        optimizations: {
-          approach: "Immediate self-reply after job posting",
-          benefits: [
-            "Reduced browser instances (60% less resource usage)",
-            "Immediate candidate engagement (0 delay vs 30min)",
-            "Simplified automation logic",
-            "Better user experience"
-          ]
-        }
-      });
-    } else {
-      res.json({
-        status: "initializing",
-        message: "Automation service not yet loaded"
-      });
-    }
+    const serviceStatus = automationService.getServiceStatus();
+    const systemStats = await automationService.getSystemStats();
+    
+    res.json({
+      ...serviceStatus,
+      systemStats,
+      optimizations: {
+        approach: "Immediate self-reply after job posting",
+        benefits: [
+          "Reduced browser instances (60% less resource usage)",
+          "Immediate candidate engagement (0 delay vs 30min)",
+          "Simplified automation logic",
+          "Better user experience"
+        ]
+      }
+    });
   } catch (error) {
     res.status(500).json({
       error: "Failed to get automation status",
@@ -196,17 +153,69 @@ app.post("/api/automation/process-all-jobs", async (req, res) => {
   }
 });
 
+app.use("/api", router)
+app.use("/api", contextRouter)
+app.get('/api/messenger-redirect', messengerRedirectWithContext);
+
+// Facebook Messenger webhook
+app.get('/webhook/messenger', handleMessengerWebhook);  // For verification
+app.post('/webhook/messenger', handleMessengerWebhook); // For receiving events
+
 async function startServer() {
   try {
     console.log('Starting optimized server...');
+    console.log('Environment:', process.env.NODE_ENV || 'development');
+    console.log('Port:', PORT);
+    console.log('Database URL configured:', process.env.DATABASE_URL ? 'Yes' : 'No');
     
-    // Start the HTTP server first, so health checks can pass
+    // Test database connection if configured
+    if (process.env.DATABASE_URL) {
+      try {
+        console.log('Testing database connection...');
+        // Import prisma client here to avoid errors if database is not configured
+        const { PrismaClient } = await import('../lib/prisma.js');
+        const prisma = new PrismaClient();
+        await prisma.$connect();
+        console.log('Database connection successful');
+        await prisma.$disconnect();
+      } catch (dbError) {
+        console.warn('Database connection failed:', dbError.message);
+        console.warn('Continuing without database...');
+      }
+    } else {
+      console.warn('No DATABASE_URL configured, skipping database setup');
+    }
+    
+    // Initialize services with error handling
+    try {
+      await automationService.initialize();
+      console.log('Automation service initialized');
+    } catch (error) {
+      console.warn('Automation service initialization failed:', error.message);
+    }
+    
+    try {
+      await commentScheduler.initialize();
+      console.log('Comment scheduler initialized');
+    } catch (error) {
+      console.warn('Comment scheduler initialization failed:', error.message);
+    }
+    
+    try {
+      await jobPostScheduler.initialize();
+      console.log('Job post scheduler initialized');
+    } catch (error) {
+      console.warn('Job post scheduler initialization failed:', error.message);
+    }
+    
+    // Start the server
     server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`Automation status: http://localhost:${PORT}/api/automation/status`);
+      console.log('Server startup completed successfully');
     });
-
+    
     // Handle server errors
     server.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
@@ -217,59 +226,9 @@ async function startServer() {
       process.exit(1);
     });
     
-    // Setup routes and services after server is running (non-blocking for health checks)
-    setTimeout(async () => {
-      await setupRoutes();
-      await initializeServices();
-    }, 1000); // Small delay to ensure server is fully started
-    
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
-  }
-}
-
-async function initializeServices() {
-  if (!automationService || !commentScheduler || !jobPostScheduler) {
-    console.log('❌ Services not loaded, skipping initialization');
-    return;
-  }
-  
-  try {
-    console.log('Initializing services...');
-    
-    // Initialize the automation service (now with optimized job posting)
-    try {
-      await automationService.initialize();
-      console.log('✅ Automation service initialized');
-    } catch (error) {
-      console.error('❌ Failed to initialize automation service:', error.message);
-    }
-    
-    // Initialize the comment scheduler for automated monitoring
-    try {
-      await commentScheduler.initialize();
-      console.log('✅ Comment scheduler initialized');
-    } catch (error) {
-      console.error('❌ Failed to initialize comment scheduler:', error.message);
-    }
-    
-    // Initialize the job post scheduler for automated job processing
-    try {
-      await jobPostScheduler.initialize();
-      console.log('✅ Job post scheduler initialized');
-    } catch (error) {
-      console.error('❌ Failed to initialize job post scheduler:', error.message);
-    }
-    
-    console.log('Service initialization completed');
-    console.log('Job posting with immediate engagement runs every 1 minute');
-    console.log('Automated comment monitoring runs every 30 minutes');
-    console.log('Manual comment monitoring available via API when needed');
-    console.log('Resource usage optimized - ~60% reduction in browser instances');
-    
-  } catch (error) {
-    console.error('Error during service initialization:', error);
   }
 }
 

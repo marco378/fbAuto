@@ -1,9 +1,9 @@
 // src/services/automation.services.js
-import { runAutomation, cleanup } from "../../src/automation/runner.js";
+import { runAutomation, cleanup } from "../../../src/automation/runner.js";
 import {
   runJobPostAutomation,
   cleanupJobPostAutomation,
-} from "../../src/automation/job-post-runner.js";
+} from "../../../src/automation/job-post-runner.js";
 import { prisma } from "../lib/prisma.js";
 
 class AutomationService {
