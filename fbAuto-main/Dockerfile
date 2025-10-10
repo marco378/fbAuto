@@ -7,7 +7,24 @@ WORKDIR /app
 # Install required sys# Back to root
 WORKDIR /app
 
-# Expose your app's port
+# Expos# Expose your app's port
+EXPOSE 5000
+
+# Create a minimal startup script for testing
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+echo "Starting minimal application for testing..."\n\
+\n\
+# Navigate to server directory\n\
+cd /app/server\n\
+\n\
+# Start the minimal application\n\
+echo "Starting minimal Node.js server..."\n\
+exec node src/index.minimal.js' > /app/start-minimal.sh && chmod +x /app/start-minimal.sh
+
+# Use the minimal startup script
+CMD ["/app/start-minimal.sh"]r app's port
 EXPOSE 5000
 
 # Create a startup script that handles database setup
