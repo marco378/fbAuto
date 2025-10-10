@@ -2,7 +2,7 @@
 import { chromium } from "playwright";
 import { ensureLoggedIn } from "./facebook-login.js";
 import { humanPause } from "./utils/delays.js";
-import { prisma } from "../../server/src/lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 
 // Store browser context globally
 let commentBrowser = null;

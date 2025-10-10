@@ -22,6 +22,9 @@ COPY fbAuto-main/server/src ./src
 # Copy the automation folder
 COPY fbAuto-main/src/automation ./src/automation
 
+# Copy the config folder  
+COPY fbAuto-main/src/config ./src/config
+
 # Copy Prisma schema if it exists
 COPY fbAuto-main/server/prisma ./prisma
 
