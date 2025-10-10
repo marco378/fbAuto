@@ -2,7 +2,7 @@
 import { prisma } from "../lib/prisma.js";
 import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
-import { runJobPostAutomation } from "../../../src/automation/job-post-runner.js";
+import { runJobPostAutomation } from "../automation/job-post-runner.js";
 
 // Create a new job
 export const createJob = async (req, res) => {
