@@ -31,8 +31,8 @@ COPY fbAuto-main/server/prisma ./prisma
 # Generate Prisma client
 RUN npx prisma generate
 
-# Expose port 8080
-EXPOSE 8080
+# Railway provides PORT environment variable dynamically
+# No need to expose a specific port
 
 # Start the app
 CMD ["node", "src/index.js"]
