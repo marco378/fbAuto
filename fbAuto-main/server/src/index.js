@@ -26,7 +26,8 @@ app.use(
     origin: [
       "http://localhost:3000",             // local dev
       "https://fb-auto-client.vercel.app", // old deployed frontend
-      "https://fb-auto-phi.vercel.app"     // new deployed frontend
+      "https://fb-auto-phi.vercel.app",    // new deployed frontend
+      "https://fb-auto-git-main-audaces-projects-907ed43e.vercel.app" // current frontend
     ],
     credentials: true, // IMPORTANT: allow cookies
   })
@@ -200,7 +201,7 @@ async function startServer() {
     console.log('Starting optimized server...');
     
     // Start the HTTP server first, so health checks can pass
-    server = app.listen(PORT, () => {
+    server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`Automation status: http://localhost:${PORT}/api/automation/status`);
