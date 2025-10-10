@@ -1,5 +1,7 @@
 // controllers/jobController.js
 import { prisma } from "../lib/prisma.js";
+import { PrismaClient } from "@prisma/client";
+import jwt from "jsonwebtoken";
 import { runJobPostAutomation } from "../../../src/automation/job-post-runner.js";
 
 // Create a new job

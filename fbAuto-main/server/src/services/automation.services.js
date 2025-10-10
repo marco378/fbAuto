@@ -1,8 +1,9 @@
 // src/services/automation.services.js
+import { PrismaClient } from "@prisma/client";
 import { runAutomation, cleanup } from "../../../src/automation/runner.js";
 import {
   runJobPostAutomation,
-  cleanupJobPostAutomation,
+  runJobPostAutomationForUser,
 } from "../../../src/automation/job-post-runner.js";
 import { prisma } from "../lib/prisma.js";
 

@@ -1,7 +1,6 @@
-# Use Node 20 as base
-FROM node:20-bullseye-slim
+# Base image
+FROM node:18
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies (optional, if needed for Puppeteer etc.)
@@ -10,20 +9,18 @@ RUN apt-get update && apt-get install -y \
     libcups2 libdbus-1-3 libdrm2 libgbm1 libnspr4 libnss3 libx11-xcb1 libxcomposite1 \
     libxdamage1 libxfixes3 libxrandr2 xdg-utils && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files from server
+# Copy server package files
 COPY fbAuto-main/server/package*.json ./
 
-# Install Node dependencies
-RUN npm install
+# Install dependencies
+RUN npm install --production
 
-# Copy server files
-COPY fbAuto-main/server .
-
-# Copy the root src directory (needed for automation modules)
+# Copy the entire source (server + automation)
+COPY fbAuto-main/server ./
 COPY fbAuto-main/src ./src
 
-# Expose Railway port
-EXPOSE 3000
+# Expose port
+EXPOSE 8080
 
-# Run the app
+# Start command
 CMD ["npm", "start"]
