@@ -1,26 +1,23 @@
-# Base image
+# Use Node 18 as base image
 FROM node:18
 
+# Set working directory
 WORKDIR /app
 
-# Install system dependencies (optional, if needed for Puppeteer etc.)
-RUN apt-get update && apt-get install -y \
-    wget ca-certificates fonts-liberation libasound2 libatk1.0-0 libatk-bridge2.0-0 \
-    libcups2 libdbus-1-3 libdrm2 libgbm1 libnspr4 libnss3 libx11-xcb1 libxcomposite1 \
-    libxdamage1 libxfixes3 libxrandr2 xdg-utils && rm -rf /var/lib/apt/lists/*
-
-# Copy server package files
+# Copy package.json from the server folder
 COPY fbAuto-main/server/package*.json ./
 
-# Install dependencies
+# Install production dependencies
 RUN npm install --production
 
-# Copy the entire source (server + automation)
-COPY fbAuto-main/server ./
-COPY fbAuto-main/src ./src
+# Copy the server source code
+COPY fbAuto-main/server/src ./src
 
-# Expose port
+# Copy the automation folder
+COPY fbAuto-main/src/automation ./src/automation
+
+# Expose port 8080
 EXPOSE 8080
 
-# Start command
-CMD ["npm", "start"]
+# Start the app
+CMD ["node", "src/index.js"]
