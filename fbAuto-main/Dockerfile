@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy package.json files first for better Docker layer caching
 COPY package*.json ./
+RUN mkdir -p ./server
 COPY server/package*.json ./server/
 
 # Install root dependencies (for Playwright)
