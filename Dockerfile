@@ -16,8 +16,11 @@ COPY fbAuto-main/server/package*.json ./
 # Install Node dependencies
 RUN npm install
 
-# Copy all remaining app files
+# Copy server files
 COPY fbAuto-main/server .
+
+# Copy the root src directory (needed for automation modules)
+COPY fbAuto-main/src ./src
 
 # Expose Railway port
 EXPOSE 3000
