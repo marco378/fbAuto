@@ -26,12 +26,12 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy server package files and install dependencies
-COPY server/package*.json ./
+# Copy from the current directory since Docker context = /server
+COPY package*.json ./
 RUN npm install
 
-# Copy the rest of the server files
-COPY server .
+# Copy everything else in /server
+COPY . .
 
 # Generate Prisma client (only if schema exists)
 RUN [ -f prisma/schema.prisma ] && npx prisma generate || echo "No Prisma schema found"
