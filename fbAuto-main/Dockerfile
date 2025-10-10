@@ -41,8 +41,8 @@ RUN npx prisma generate --schema=server/prisma/schema.prisma
 # Copy the rest of the application code
 COPY . .
 
-# ✅ Copy cookies folder explicitly
-COPY server/cookies ./cookies
+# ✅ Create cookies directory if it doesn't exist (gitignored)
+RUN mkdir -p ./cookies && mkdir -p ./server/cookies
 
 # Install server-specific dependencies and generate Prisma client
 WORKDIR /app/server
