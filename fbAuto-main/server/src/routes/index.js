@@ -7,6 +7,7 @@ import candidateRouter from './candidate.route.js'
 import cookieRouter from './cookie.router.js'
 import manual2FARouter from './manual-2fa.router.js'
 import { automationService } from "../services/automation.services.js";
+import { jobPostScheduler } from "../services/job-post-scheduler.js";
 
 
 const router = express.Router()
@@ -22,16 +23,42 @@ router.get("/automation/status", async (req, res) => {
   try {
     const serviceStatus = automationService.getServiceStatus();
     const systemStats = await automationService.getSystemStats();
+    const schedulerStatus = jobPostScheduler.getStatus();
     
     res.json({
       ...serviceStatus,
       systemStats,
+      scheduler: schedulerStatus,
       message: "Local automation service status"
     });
   } catch (error) {
     res.status(500).json({
       error: "Failed to get automation status",
       message: error.message
+    });
+  }
+});
+
+// Enable/disable auto-scheduling
+router.post("/automation/scheduler/toggle", async (req, res) => {
+  try {
+    const { enable } = req.body;
+    
+    if (enable) {
+      jobPostScheduler.enableAutoScheduling();
+    } else {
+      jobPostScheduler.disableAutoScheduling();
+    }
+    
+    res.json({
+      success: true,
+      message: `Auto-scheduling ${enable ? 'enabled' : 'disabled'}`,
+      scheduler: jobPostScheduler.getStatus()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
