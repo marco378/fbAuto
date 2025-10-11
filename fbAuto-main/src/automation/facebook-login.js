@@ -118,8 +118,28 @@ export const ensureLoggedIn = async ({ page, context }) => {
   const cookiesLoaded = await loadCookiesFromStorage(context, email);
 
   if (cookiesLoaded) {
-    await page.goto(FB.base, { waitUntil: "load", timeout: 30000 });
-    await page.waitForTimeout(2000);
+    try {
+      // More conservative navigation in production
+      if (process.env.NODE_ENV === 'production') {
+        console.log("🌐 Navigating to Facebook (production mode with stability)...");
+        await page.goto(FB.base, { 
+          waitUntil: "domcontentloaded", 
+          timeout: 60000 
+        });
+        await humanPause(3000, 5000);
+        await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {
+          console.log("⚠️ Network idle timeout, continuing anyway...");
+        });
+      } else {
+        await page.goto(FB.base, { waitUntil: "load", timeout: 30000 });
+      }
+      await page.waitForTimeout(2000);
+    } catch (navError) {
+      console.error("❌ Navigation error:", navError.message);
+      console.log("🔄 Attempting fresh login instead...");
+      await freshLogin(page, context, email, password);
+      return true;
+    }
 
     if (await hasFacebookSession(context)) {
       console.log("✅ Already logged in via cookies!");

@@ -25,6 +25,32 @@ const getJobPostBrowserConfig = () => ({
     "--disable-ipc-flooding-protection",
     "--memory-pressure-off",
     "--max_old_space_size=2048",
+    "--disable-web-security",
+    "--disable-features=VizDisplayCompositor",
+    "--disable-breakpad",
+    "--disable-extensions",
+    "--disable-default-apps",
+    "--disable-sync",
+    "--metrics-recording-only",
+    "--no-first-run",
+    "--safebrowsing-disable-auto-update",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-domain-reliability",
+    "--disable-features=AudioServiceOutOfProcess",
+    "--disable-features=Translate",
+    "--disable-hang-monitor",
+    "--disable-logging",
+    "--disable-popup-blocking",
+    "--disable-prompt-on-repost",
+    "--disable-renderer-backgrounding",
+    "--disable-sync",
+    "--force-color-profile=srgb",
+    "--no-default-browser-check",
+    "--no-pings",
+    "--password-store=basic",
+    "--use-mock-keychain",
+    "--single-process",
   ],
 });
 
@@ -802,6 +828,12 @@ export async function runJobPostAutomation(credentials, jobData = null) {
 
     console.log("🔑 Logging in...");
     await ensureLoggedIn({ page, context, credentials });
+    
+    // Add stability delay after login in production
+    if (process.env.NODE_ENV === 'production') {
+      console.log("⏱️ Stabilizing browser after login (production mode)...");
+      await humanPause(5000, 8000);
+    }
 
     const { facebookGroups } = jobData;
 
