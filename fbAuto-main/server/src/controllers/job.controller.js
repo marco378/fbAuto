@@ -561,11 +561,7 @@ export const getJobAnalytics = async (req, res) => {
       include: {
         posts: {
           include: {
-            comments: {
-              include: {
-                candidate: true,
-              },
-            },
+            comments: true,
             metrics: true,
           },
         },
