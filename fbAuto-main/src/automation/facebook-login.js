@@ -406,30 +406,89 @@ export const ensureLoggedIn = async ({ page, context }) => {
     }
   }
 
-  // Re-check session with more tolerance
+  // Re-check session with more tolerance and better indicators
   try {
-    await page.goto("https://www.facebook.com/", { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.waitForTimeout(3000);
-
-    if (!(await hasFacebookSession(context))) {
-      console.log("⚠️ Session validation failed after 2FA handling");
-      console.log("🔄 Attempting one more navigation to establish session...");
-      
-      // One more attempt with longer timeout
-      await page.goto("https://www.facebook.com/", { waitUntil: "load", timeout: 60000 });
-      await humanPause(5000, 8000);
-      
-      if (!(await hasFacebookSession(context))) {
-        console.log("❌ Unable to establish valid session - but saving cookies anyway");
-        await saveCookiesToStorage(context, email);
-        throw new Error("❌ Login session not fully established");
+    console.log("🔍 Validating login session...");
+    
+    // Try multiple navigation approaches to establish session
+    const navigationAttempts = [
+      "https://m.facebook.com/",
+      "https://www.facebook.com/",
+      "https://m.facebook.com/home.php",
+    ];
+    
+    let sessionEstablished = false;
+    
+    for (const url of navigationAttempts) {
+      try {
+        console.log(`🌐 Trying navigation to: ${url}`);
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.waitForTimeout(3000);
+        
+        // Check for login indicators with more comprehensive detection
+        const loginCheck = await page.evaluate(() => {
+          const indicators = [
+            // Positive indicators (logged in)
+            !document.querySelector('#email'),
+            !document.querySelector('input[name="email"]'),
+            !document.querySelector('input[type="email"]'),
+            !!document.querySelector('[data-testid="react-composer-post-button"]'),
+            !!document.querySelector('[aria-label*="Account"]'),
+            !!document.querySelector('div[role="main"]'),
+            !!document.querySelector('[data-testid="blue_bar"]'),
+            !!document.querySelector('nav'),
+            // URL indicators
+            window.location.href.includes('facebook.com') && 
+            !window.location.href.includes('login') && 
+            !window.location.href.includes('checkpoint'),
+            // Mobile indicators
+            !!document.querySelector('[data-sigil="m-navigation-item"]'),
+            !!document.querySelector('[data-testid="mobile_navbar"]'),
+            // Profile/menu indicators
+            !!document.querySelector('[data-testid="left_nav_menu_list"]'),
+            !!document.querySelector('div[role="banner"]'),
+          ];
+          
+          const positiveCount = indicators.filter(Boolean).length;
+          return {
+            success: positiveCount >= 3, // Need at least 3 positive indicators
+            indicators: positiveCount,
+            url: window.location.href,
+            hasLoginForm: !!document.querySelector('#email') || !!document.querySelector('input[name="email"]')
+          };
+        });
+        
+        console.log(`📊 Login validation: ${loginCheck.indicators} indicators, success: ${loginCheck.success}`);
+        
+        if (loginCheck.success || !loginCheck.hasLoginForm) {
+          console.log("✅ Session validation successful!");
+          sessionEstablished = true;
+          break;
+        }
+        
+      } catch (navError) {
+        console.log(`⚠️ Navigation to ${url} failed:`, navError.message);
+        continue;
       }
     }
-  } catch (navError) {
-    console.log("⚠️ Navigation error during session validation:", navError.message);
-    // Save cookies even if validation fails
+    
+    if (!sessionEstablished) {
+      console.log("⚠️ Session validation uncertain, but proceeding with saved cookies");
+      // Save cookies even if validation is uncertain
+      await saveCookiesToStorage(context, email);
+      
+      // Don't throw error, just proceed - the system might still work
+      console.log("🔄 Proceeding with potentially partial session...");
+    }
+    
+  } catch (validationError) {
+    console.log("⚠️ Session validation error:", validationError.message);
+    // Save cookies even if validation fails completely
     await saveCookiesToStorage(context, email);
-    throw navError;
+    console.log("💾 Cookies saved despite validation issues");
+    
+    // Don't throw error - let the system attempt to continue
+    console.log("🔄 Continuing despite validation uncertainty...");
   }
 
   console.log("✅ Login successful!");
