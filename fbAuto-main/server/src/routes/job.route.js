@@ -23,6 +23,15 @@ jobRouter.use(verifyToken)
 jobRouter.post('/', createJob);
 jobRouter.get('/', getUserJobs);
 jobRouter.get('/pending', getPendingJobs);
+
+// Client-side automation routes (must come before /:jobId)
+jobRouter.get('/client-automation', getJobsForClientAutomation);
+
+// NEW: Pending job processing routes
+jobRouter.post('/pending/process-all', processAllPendingJobs);
+jobRouter.post('/pending/:jobId/process', processPendingJob);
+
+// Parameterized routes (must come after specific routes)
 jobRouter.get('/:jobId', getJob);
 jobRouter.put('/:jobId', updateJob);
 jobRouter.delete('/:jobId', deleteJob);
@@ -30,13 +39,6 @@ jobRouter.delete('/:jobId', deleteJob);
 // Job posting routes
 jobRouter.post('/:jobId/post-to-facebook', postJobToFacebook);
 jobRouter.get('/:jobId/analytics', getJobAnalytics);
-
-// Client-side automation routes
-jobRouter.get('/client-automation', getJobsForClientAutomation);
 jobRouter.post('/:jobId/update-posting-status', updateJobPostingStatus);
-
-// NEW: Pending job processing routes
-jobRouter.post('/pending/process-all', processAllPendingJobs);
-jobRouter.post('/pending/:jobId/process', processPendingJob);
 
 export default jobRouter
