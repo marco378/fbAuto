@@ -112,6 +112,31 @@ const handleCommon2FAScenarios = async (page) => {
     // Wait a bit for the page to load completely
     await humanPause(3000, 5000);
     
+    // Check if we're on a 2FA page that can be bypassed
+    const pageContent = await page.content();
+    
+    // Look for "Remember this browser" or "Don't ask again" options
+    const trustDeviceSelectors = [
+      'input[name="remember_browser"]',
+      'input[type="checkbox"][value="1"]',
+      'label:has-text("Remember this browser")',
+      'label:has-text("Don\'t ask again")',
+      'label:has-text("Save device")',
+    ];
+    
+    for (const selector of trustDeviceSelectors) {
+      try {
+        const element = await page.locator(selector).first();
+        if (await element.isVisible({ timeout: 2000 })) {
+          console.log(`🔐 Found "Remember this browser" option, checking it...`);
+          await element.check();
+          await humanPause(1000, 2000);
+        }
+      } catch (err) {
+        continue;
+      }
+    }
+    
     // Common selectors for 2FA "Continue" or "Skip" buttons
     const autoClickSelectors = [
       'button[name="__CONFIRM__"]',
@@ -120,11 +145,18 @@ const handleCommon2FAScenarios = async (page) => {
       'button:has-text("Skip")',
       'button:has-text("Not Now")',
       'button:has-text("Skip for now")',
+      'button:has-text("Ask later")',
+      'button:has-text("Not now")',
       'a:has-text("Skip")',
       'a:has-text("Not now")',
       '[data-testid="sec_ac_button"]',
       '[role="button"]:has-text("Continue")',
       '[role="button"]:has-text("Skip")',
+      '[role="button"]:has-text("Not Now")',
+      // Mobile-specific selectors
+      'button[value="submit"]',
+      'input[type="submit"]',
+      'button[type="submit"]',
     ];
     
     for (const selector of autoClickSelectors) {
@@ -136,7 +168,16 @@ const handleCommon2FAScenarios = async (page) => {
           await humanPause(2000, 3000);
           
           // Check if this resolved the challenge
-          if (await hasFacebookSession(page.context())) {
+          const resolved = await page.evaluate(() => {
+            return !document.querySelector('#email') && 
+                   !document.querySelector('input[name="email"]') &&
+                   (document.querySelector('[data-testid="react-composer-post-button"]') ||
+                    document.querySelector('[aria-label*="Account"]') ||
+                    document.querySelector('div[role="main"]') ||
+                    (window.location.href.includes('facebook.com') && !window.location.href.includes('login') && !window.location.href.includes('checkpoint')));
+          });
+          
+          if (resolved) {
             console.log("✅ 2FA automatically resolved!");
             return true;
           }
@@ -153,6 +194,7 @@ const handleCommon2FAScenarios = async (page) => {
       '[data-testid="modal_close_button"]',
       'button:has-text("✕")',
       'button:has-text("×")',
+      '[role="button"][aria-label="Close"]',
     ];
     
     for (const selector of dismissSelectors) {
