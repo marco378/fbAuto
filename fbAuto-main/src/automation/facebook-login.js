@@ -257,9 +257,21 @@ export const ensureLoggedIn = async ({ page, context }) => {
     await context.clearCookies();
   }
 
-  // Fresh login
+  // Fresh login with improved mobile compatibility
   console.log("🔐 Proceeding with fresh login...");
-  await page.goto(FB.base, { waitUntil: "load", timeout: 30000 });
+  
+  // Try mobile login first for better 2FA bypass
+  try {
+    console.log("📱 Attempting mobile Facebook login...");
+    await page.goto("https://m.facebook.com/login/", { 
+      waitUntil: "domcontentloaded", 
+      timeout: 45000 
+    });
+    await humanPause(2000, 3000);
+  } catch (mobileNavError) {
+    console.log("⚠️ Mobile navigation failed, using desktop login...");
+    await page.goto(FB.base, { waitUntil: "load", timeout: 30000 });
+  }
 
   if (await hasFacebookSession(context)) {
     console.log("✅ Session already active, no login form needed");
@@ -267,12 +279,35 @@ export const ensureLoggedIn = async ({ page, context }) => {
     return true;
   }
 
-  // Fill login form
-  await page.locator(LoginSelectors.email).first().fill(email);
-  await humanPause(800);
-  await page.locator(LoginSelectors.password).first().fill(password);
-  await humanPause(800);
-  await page.locator(LoginSelectors.loginButton).first().click();
+  // Fill login form with better error handling
+  try {
+    console.log("📝 Filling login form...");
+    
+    // Wait for email field and fill it
+    await page.waitForSelector(LoginSelectors.email, { timeout: 10000 });
+    await page.locator(LoginSelectors.email).first().fill(email);
+    await humanPause(800, 1200);
+    
+    // Fill password
+    await page.locator(LoginSelectors.password).first().fill(password);
+    await humanPause(800, 1200);
+    
+    // Try multiple approaches to submit login
+    const loginButton = page.locator(LoginSelectors.loginButton).first();
+    
+    if (await loginButton.isVisible({ timeout: 5000 })) {
+      console.log("🔘 Clicking login button...");
+      await loginButton.click();
+    } else {
+      console.log("⌨️ Login button not found, trying Enter key...");
+      await page.keyboard.press('Enter');
+    }
+    
+  } catch (loginError) {
+    console.log("⚠️ Login form error:", loginError.message);
+    // Try alternative approach
+    await page.keyboard.press('Enter');
+  }
 
   await page.waitForTimeout(4000);
 
@@ -287,11 +322,25 @@ export const ensureLoggedIn = async ({ page, context }) => {
       console.log("🔧 The automation will automatically continue once completed");
 
       // Wait up to 10 minutes for manual completion with better feedback
+      let twoFACompleted = false;
+      
       for (let i = 0; i < 60; i++) {
         await page.waitForTimeout(10000); // Wait 10 seconds
 
-        if (await hasFacebookSession(context)) {
+        // Check multiple conditions for successful completion
+        const sessionCheck = await hasFacebookSession(context);
+        const pageCheck = await page.evaluate(() => {
+          return !document.querySelector('#email') && 
+                 !document.querySelector('input[name="email"]') &&
+                 (document.querySelector('[data-testid="react-composer-post-button"]') ||
+                  document.querySelector('[aria-label*="Account"]') ||
+                  document.querySelector('div[role="main"]') ||
+                  document.URL.includes('facebook.com') && !document.URL.includes('login'));
+        });
+
+        if (sessionCheck || pageCheck) {
           console.log("✅ Challenge completed, continuing...");
+          twoFACompleted = true;
           break;
         }
 
@@ -301,10 +350,16 @@ export const ensureLoggedIn = async ({ page, context }) => {
         }
 
         if (i === 59) {
-          console.log("⚠️ 2FA timeout reached, but continuing anyway...");
+          console.log("⚠️ 2FA timeout reached, attempting to continue anyway...");
           // Don't throw error, just continue and let the system handle it
           break;
         }
+      }
+      
+      // If 2FA wasn't completed, try to save whatever session we have
+      if (!twoFACompleted) {
+        console.log("💾 Saving partial session state for future use...");
+        await saveCookiesToStorage(context, email);
       }
     }
   }
