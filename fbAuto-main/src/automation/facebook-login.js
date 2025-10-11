@@ -1,9 +1,12 @@
-// src/automation/facebook-login.js
 import { FB } from "../config/facebook-config.js";
 import { LoginSelectors } from "./utils/selectors.js";
 import { humanPause } from "./utils/delays.js";
 import fs from "fs";
 import path from "path";
+
+// Global 2FA handling state to prevent concurrent challenges
+let global2FAInProgress = false;
+let global2FACompletedAt = null;
 
 const COOKIES_DIR = path.join(process.cwd(), "cookies");
 const getCookiePath = (email) =>
@@ -356,6 +359,25 @@ export const ensureLoggedIn = async ({ page, context }) => {
   if (await detectChallenges(page)) {
     console.log("⚠️ Challenge detected, attempting automatic resolution...");
     
+    // Check if another process is already handling 2FA
+    if (global2FAInProgress) {
+      console.log("🔄 Another process is handling 2FA, waiting for completion...");
+      
+      // Wait for the other process to complete 2FA (max 2 minutes)
+      for (let i = 0; i < 12; i++) {
+        await page.waitForTimeout(10000);
+        if (!global2FAInProgress || (global2FACompletedAt && Date.now() - global2FACompletedAt < 60000)) {
+          console.log("✅ Other process completed 2FA, proceeding...");
+          return true;
+        }
+      }
+      
+      console.log("⏳ Other process taking too long, proceeding with own 2FA...");
+    }
+    
+    // Set global flag
+    global2FAInProgress = true;
+    
     // Try to handle common 2FA scenarios automatically
     const handled = await handleCommon2FAScenarios(page);
     
@@ -363,10 +385,10 @@ export const ensureLoggedIn = async ({ page, context }) => {
       console.log("🔧 Please complete the 2FA/checkpoint in the browser window");
       console.log("🔧 The automation will automatically continue once completed");
 
-      // Wait up to 10 minutes for manual completion with better feedback
+      // Wait up to 5 minutes for manual completion with better feedback
       let twoFACompleted = false;
       
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 30; i++) { // Reduced from 60 to 30 (5 minutes instead of 10)
         await page.waitForTimeout(10000); // Wait 10 seconds
 
         // Check multiple conditions for successful completion
@@ -391,8 +413,8 @@ export const ensureLoggedIn = async ({ page, context }) => {
           console.log(`⏳ Still waiting for 2FA completion... ${Math.round((i + 1) / 6)} minutes elapsed`);
         }
 
-        if (i === 59) {
-          console.log("⚠️ 2FA timeout reached, attempting to continue anyway...");
+        if (i === 29) { // Updated condition
+          console.log("⏳ 2FA timeout reached, proceeding with saved session...");
           // Don't throw error, just continue and let the system handle it
           break;
         }
@@ -403,7 +425,15 @@ export const ensureLoggedIn = async ({ page, context }) => {
         console.log("💾 Saving partial session state for future use...");
         await saveCookiesToStorage(context, email);
       }
+      
+      // Clear global 2FA flag and set completion time
+      global2FAInProgress = false;
+      global2FACompletedAt = Date.now();
     }
+    
+    // Clear global 2FA flag
+    global2FAInProgress = false;
+    global2FACompletedAt = Date.now();
   }
 
   // Re-check session with more tolerance and better indicators
