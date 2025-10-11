@@ -643,7 +643,7 @@ export const getJobsForClientAutomation = async (req, res) => {
             status: { in: ["SUCCESS", "FAILED"] }
           },
           select: {
-            facebookGroup: true,
+            facebookGroupUrl: true,
             status: true,
           }
         }
@@ -660,7 +660,7 @@ export const getJobsForClientAutomation = async (req, res) => {
         const postedGroups = new Set(
           job.posts
             .filter(p => p.status === "SUCCESS")
-            .map(p => p.facebookGroup)
+            .map(p => p.facebookGroupUrl)
         );
         
         const pendingGroups = job.facebookGroups.filter(
@@ -728,18 +728,17 @@ export const updateJobPostingStatus = async (req, res) => {
     // Create or update the post record
     const postData = {
       jobId,
-      facebookGroup,
+      facebookGroupUrl: facebookGroup,
       status: status.toUpperCase(),
       postUrl: postUrl || null,
-      error: postError || null,
-      postedAt: status.toLowerCase() === "success" ? new Date() : null,
+      errorMessage: postError || null,
     };
 
     // Check if post already exists for this job and group
     const existingPost = await prisma.jobPost.findFirst({
       where: {
         jobId,
-        facebookGroup,
+        facebookGroupUrl: facebookGroup,
       }
     });
 
