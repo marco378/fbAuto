@@ -3,8 +3,18 @@ import { JWT_SECRET } from "../credentials.js";
 
 export const verifyToken = async (req, res, next) => {
   try {
-    const token = req.cookies.token;
-    console.log("token",token);
+    // Check for token in cookies first, then Authorization header
+    let token = req.cookies.token;
+    
+    // If no cookie token, check Authorization header
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7); // Remove "Bearer " prefix
+      }
+    }
+    
+    console.log("token", token ? `${token.substring(0, 20)}...` : 'none');
     
     if (!token) {
       return res
