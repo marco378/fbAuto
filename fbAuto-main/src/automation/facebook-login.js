@@ -104,6 +104,78 @@ const detectChallenges = async (page) => {
   return false;
 };
 
+// 🤖 Handle common 2FA scenarios automatically
+const handleCommon2FAScenarios = async (page) => {
+  try {
+    console.log("🤖 Attempting automatic 2FA handling...");
+    
+    // Wait a bit for the page to load completely
+    await humanPause(3000, 5000);
+    
+    // Common selectors for 2FA "Continue" or "Skip" buttons
+    const autoClickSelectors = [
+      'button[name="__CONFIRM__"]',
+      '#checkpointSubmitButton',
+      'button:has-text("Continue")',
+      'button:has-text("Skip")',
+      'button:has-text("Not Now")',
+      'button:has-text("Skip for now")',
+      'a:has-text("Skip")',
+      'a:has-text("Not now")',
+      '[data-testid="sec_ac_button"]',
+      '[role="button"]:has-text("Continue")',
+      '[role="button"]:has-text("Skip")',
+    ];
+    
+    for (const selector of autoClickSelectors) {
+      try {
+        const element = await page.locator(selector).first();
+        if (await element.isVisible({ timeout: 2000 })) {
+          console.log(`🎯 Found auto-clickable element: ${selector}`);
+          await element.click();
+          await humanPause(2000, 3000);
+          
+          // Check if this resolved the challenge
+          if (await hasFacebookSession(page.context())) {
+            console.log("✅ 2FA automatically resolved!");
+            return true;
+          }
+        }
+      } catch (err) {
+        // Continue to next selector if this one fails
+        continue;
+      }
+    }
+    
+    // Try to dismiss any overlays or modals
+    const dismissSelectors = [
+      '[aria-label="Close"]',
+      '[data-testid="modal_close_button"]',
+      'button:has-text("✕")',
+      'button:has-text("×")',
+    ];
+    
+    for (const selector of dismissSelectors) {
+      try {
+        const element = await page.locator(selector).first();
+        if (await element.isVisible({ timeout: 1000 })) {
+          await element.click();
+          await humanPause(1000, 2000);
+        }
+      } catch (err) {
+        continue;
+      }
+    }
+    
+    console.log("🤖 Automatic 2FA handling completed, manual action may still be required");
+    return false;
+    
+  } catch (error) {
+    console.log("⚠️ Automatic 2FA handling failed:", error.message);
+    return false;
+  }
+};
+
 // ✅ Main login flow with aggressive cookie validation to avoid 2FA
 export const ensureLoggedIn = async ({ page, context }) => {
   const credentials = {
@@ -193,31 +265,62 @@ export const ensureLoggedIn = async ({ page, context }) => {
   await page.waitForTimeout(4000);
 
   if (await detectChallenges(page)) {
-    console.log("⚠️ Challenge detected, waiting for manual completion...");
-    console.log("🔧 Please complete the 2FA/checkpoint in the browser window");
-    console.log("🔧 The automation will automatically continue once completed");
+    console.log("⚠️ Challenge detected, attempting automatic resolution...");
+    
+    // Try to handle common 2FA scenarios automatically
+    const handled = await handleCommon2FAScenarios(page);
+    
+    if (!handled) {
+      console.log("🔧 Please complete the 2FA/checkpoint in the browser window");
+      console.log("🔧 The automation will automatically continue once completed");
 
-    // Wait up to 5 minutes for manual completion
-    for (let i = 0; i < 30; i++) {
-      await page.waitForTimeout(10000); // Wait 10 seconds
+      // Wait up to 10 minutes for manual completion with better feedback
+      for (let i = 0; i < 60; i++) {
+        await page.waitForTimeout(10000); // Wait 10 seconds
 
-      if (await hasFacebookSession(context)) {
-        console.log("✅ Challenge completed, continuing...");
-        break;
-      }
+        if (await hasFacebookSession(context)) {
+          console.log("✅ Challenge completed, continuing...");
+          break;
+        }
 
-      if (i === 29) {
-        throw new Error("❌ 2FA timeout - please complete verification faster");
+        // Provide progress feedback every minute
+        if (i % 6 === 0 && i > 0) {
+          console.log(`⏳ Still waiting for 2FA completion... ${Math.round((i + 1) / 6)} minutes elapsed`);
+        }
+
+        if (i === 59) {
+          console.log("⚠️ 2FA timeout reached, but continuing anyway...");
+          // Don't throw error, just continue and let the system handle it
+          break;
+        }
       }
     }
   }
 
-  // Re-check session
-  await page.goto(FB.base, { waitUntil: "load", timeout: 30000 });
-  await page.waitForTimeout(2000);
+  // Re-check session with more tolerance
+  try {
+    await page.goto("https://www.facebook.com/", { waitUntil: "domcontentloaded", timeout: 45000 });
+    await page.waitForTimeout(3000);
 
-  if (!(await hasFacebookSession(context))) {
-    throw new Error("❌ Login failed - no valid session found");
+    if (!(await hasFacebookSession(context))) {
+      console.log("⚠️ Session validation failed after 2FA handling");
+      console.log("🔄 Attempting one more navigation to establish session...");
+      
+      // One more attempt with longer timeout
+      await page.goto("https://www.facebook.com/", { waitUntil: "load", timeout: 60000 });
+      await humanPause(5000, 8000);
+      
+      if (!(await hasFacebookSession(context))) {
+        console.log("❌ Unable to establish valid session - but saving cookies anyway");
+        await saveCookiesToStorage(context, email);
+        throw new Error("❌ Login session not fully established");
+      }
+    }
+  } catch (navError) {
+    console.log("⚠️ Navigation error during session validation:", navError.message);
+    // Save cookies even if validation fails
+    await saveCookiesToStorage(context, email);
+    throw navError;
   }
 
   console.log("✅ Login successful!");
