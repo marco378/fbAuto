@@ -11,7 +11,7 @@ let currentJobUser = null;
 
 // MINIMAL browser configuration - remove all potentially problematic flags
 const getJobPostBrowserConfig = () => ({
-  headless: false,
+  headless: process.env.NODE_ENV === 'production' || process.env.HEADLESS === 'true',
   args: [
     "--no-sandbox",
     "--disable-dev-shm-usage",

@@ -1,8 +1,13 @@
 // src/lib/axios.js
 import axios from "axios";
 
-// Ensure the API URL always ends with /api
+// Ensure the API URL always ends with /api and starts with https://
 let API_URL = process.env.NEXT_PUBLIC_API_URL || "https://fbauto-production-4368.up.railway.app/api";
+
+// Add https:// if missing
+if (!API_URL.startsWith('http://') && !API_URL.startsWith('https://')) {
+  API_URL = 'https://' + API_URL;
+}
 
 // If the URL doesn't end with /api, add it
 if (!API_URL.endsWith('/api')) {
