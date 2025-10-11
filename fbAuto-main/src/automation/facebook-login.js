@@ -186,6 +186,15 @@ export const ensureLoggedIn = async ({ page, context }) => {
   const { email, password } = credentials;
   console.log(`🔑 Attempting login for: ${email}`);
 
+  // Try mobile user agent first (often bypasses 2FA)
+  await page.setUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1");
+  
+  // Add device fingerprinting
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    delete navigator.__proto__.webdriver;
+  });
+
   // AGGRESSIVE: Try loading cookies first and test them extensively
   const cookiesLoaded = await loadCookiesFromStorage(context, email);
 

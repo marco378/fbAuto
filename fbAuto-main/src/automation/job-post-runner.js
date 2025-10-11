@@ -108,13 +108,35 @@ async function getJobPostContextForUser(browser, userEmail) {
       
       try {
         // Try creating persistent context first to maintain session state
-        jobPostContext = await chromium.launchPersistentContext(userDataDir, {
-          ...getJobPostBrowserConfig(),
+        // Use a consistent user data directory that persists across restarts
+        const persistentDir = path.join('/tmp', 'fb-persistent', userEmail.replace('@', '_').replace(/\./g, '_'));
+        
+        jobPostContext = await chromium.launchPersistentContext(persistentDir, {
+          headless: process.env.NODE_ENV === 'production' || process.env.HEADLESS === 'true',
+          args: [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-blink-features=AutomationControlled",
+            "--no-first-run",
+            "--disable-infobars",
+            "--disable-web-security",
+            "--disable-features=VizDisplayCompositor",
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "--window-size=1366,768",
+            // Additional session persistence flags
+            "--enable-automation=false",
+            "--disable-features=AutomationControlled",
+            "--exclude-switches=enable-automation",
+            "--disable-client-side-phishing-detection",
+            "--disable-extensions-file-access-check",
+            "--disable-extensions-http-throttling",
+            "--disable-extensions-except=/tmp",
+          ],
           viewport: { width: 1366, height: 768 },
           userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           locale: "en-US",
           timezoneId: "America/New_York",
-          geolocation: { latitude: 40.7128, longitude: -74.0060 }, // NYC coordinates
+          geolocation: { latitude: 40.7128, longitude: -74.0060 },
           permissions: ['geolocation'],
           extraHTTPHeaders: {
             'Accept-Language': 'en-US,en;q=0.9',
@@ -122,9 +144,14 @@ async function getJobPostContextForUser(browser, userEmail) {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache',
-          }
+            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+          },
+          // Critical: Enable storage persistence
+          storageState: undefined, // Let it manage state automatically
         });
-        console.log("✅ Using persistent context to maintain login state");
+        console.log("✅ Using persistent context with enhanced session management");
       } catch (persistentError) {
         console.log("⚠️ Fallback to regular context:", persistentError.message);
         // Fallback to regular context if persistent fails
