@@ -375,8 +375,60 @@ async function createGroupPost(page, jobContent) {
 
     console.log("🔍 Looking for 'Write something...' button...");
 
+    // First, let's debug the current page state
+    const currentUrl = page.url();
+    const pageTitle = await page.title();
+    console.log(`🌐 Current URL: ${currentUrl}`);
+    console.log(`📄 Page title: ${pageTitle}`);
+    
+    // Check if we're actually on a Facebook group page
+    if (!currentUrl.includes('facebook.com/groups/')) {
+      console.log(`❌ Not on a Facebook group page! Current URL: ${currentUrl}`);
+      throw new Error(`Expected to be on a Facebook group page, but currently on: ${currentUrl}`);
+    }
+    
+    // Check for common login/challenge indicators
+    const pageContent = await page.content();
+    const contentLower = pageContent.toLowerCase();
+    
+    if (contentLower.includes('log in') || contentLower.includes('sign in') || contentLower.includes('login')) {
+      console.log("❌ Still on login page or login required");
+      throw new Error("Still on login page - not properly logged in");
+    }
+    
+    if (contentLower.includes('checkpoint') || contentLower.includes('security check') || contentLower.includes('verify your identity')) {
+      console.log("❌ Stuck on security checkpoint");
+      throw new Error("Stuck on Facebook security checkpoint");
+    }
+    
+    if (contentLower.includes('two-factor') || contentLower.includes('2fa') || contentLower.includes('authentication code')) {
+      console.log("❌ Stuck on 2FA page");
+      throw new Error("Stuck on 2FA authentication page");
+    }
+    
+    // Check if group posting is restricted
+    if (contentLower.includes("you can't post") || contentLower.includes("posting restricted") || contentLower.includes("unable to post")) {
+      console.log("❌ Group posting is restricted");
+      throw new Error("This group doesn't allow posting or posting is restricted");
+    }
+    
+    console.log("✅ Page appears to be a valid Facebook group page");
+    console.log("🔍 Searching for post creation elements...");
+
+    // Take a screenshot for debugging
+    try {
+      await page.screenshot({ 
+        path: `/tmp/facebook-debug-${Date.now()}.png`,
+        fullPage: true 
+      });
+      console.log("📸 Debug screenshot saved to /tmp/");
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save debug screenshot:", screenshotError.message);
+    }
+
     // Comprehensive selector list
     const writeButtonSelectors = [
+      // Traditional "Write something..." selectors
       'span:has-text("Write something...")',
       'div[role="button"]:has-text("Write something...")',
       '[aria-label="Write something..."]',
@@ -386,6 +438,44 @@ async function createGroupPost(page, jobContent) {
       '[placeholder="Write something..."]',
       'span:text-is("Write something...")',
       '*:has-text("Write something...")',
+      
+      // New Facebook interface selectors
+      '[aria-label="Create a post"]',
+      '[data-testid="post-composer-input"]',
+      '[data-testid="post-creation-composer"]',
+      'div[role="button"]:has-text("What\'s on your mind")',
+      'div[role="button"]:has-text("Create post")',
+      'div[role="button"]:has-text("Share something")',
+      'div[role="button"]:has-text("Create a post")',
+      
+      // Mobile-specific selectors
+      '[aria-label="What\'s on your mind?"]',
+      'div[role="textbox"][contenteditable="true"]',
+      '[data-testid="composer-input"]',
+      'textarea[placeholder="What\'s on your mind?"]',
+      'div[data-testid="status-attachment-mentions-input"]',
+      
+      // Alternative text variations
+      'span:has-text("What\'s on your mind")',
+      'div:has-text("Start a discussion")',
+      'div:has-text("Share an update")',
+      'div:has-text("Post something")',
+      
+      // Generic post creation elements
+      '[role="button"][aria-label*="post"]',
+      '[role="button"][aria-label*="share"]',
+      '[role="button"][aria-label*="write"]',
+      'div[contenteditable="true"][role="textbox"]',
+      
+      // Group-specific selectors
+      'div[aria-label*="group"]',
+      '[data-testid="group-post-composer"]',
+      
+      // Fallback selectors
+      'div[role="button"]:visible',
+      'span:visible:contains("Write")',
+      'span:visible:contains("Share")',
+      'span:visible:contains("Post")',
     ];
 
     let writeButton = null;
@@ -416,15 +506,92 @@ async function createGroupPost(page, jobContent) {
     // Aggressive search if needed
     if (!writeButton) {
       console.log("🔍 Trying aggressive search for write button...");
+      
+      // Method 1: XPath search for text content
       try {
-        writeButton = page.locator(`xpath=//*[contains(text(), "Write something")]`).first();
-        if (await writeButton.isVisible({ timeout: 2000 })) {
-          console.log("✅ Found write button using aggressive search");
-        } else {
-          writeButton = null;
+        const xpathSelectors = [
+          `xpath=//*[contains(text(), "Write something")]`,
+          `xpath=//*[contains(text(), "What's on your mind")]`,
+          `xpath=//*[contains(text(), "Share something")]`,
+          `xpath=//*[contains(text(), "Create post")]`,
+          `xpath=//*[contains(text(), "Start a discussion")]`,
+        ];
+        
+        for (const xpath of xpathSelectors) {
+          try {
+            writeButton = page.locator(xpath).first();
+            if (await writeButton.isVisible({ timeout: 2000 })) {
+              console.log(`✅ Found write button using XPath: ${xpath}`);
+              break;
+            } else {
+              writeButton = null;
+            }
+          } catch (err) {
+            continue;
+          }
         }
       } catch (error) {
-        console.log("❌ Aggressive search failed:", error.message);
+        console.log("❌ XPath search failed:", error.message);
+      }
+      
+      // Method 2: Search for elements by role and try clicking them
+      if (!writeButton) {
+        console.log("🔍 Searching for clickable elements that might open composer...");
+        try {
+          const clickableElements = await page.locator('[role="button"]:visible').all();
+          console.log(`Found ${clickableElements.length} clickable elements`);
+          
+          for (let i = 0; i < Math.min(clickableElements.length, 10); i++) {
+            try {
+              const element = clickableElements[i];
+              const text = await element.textContent().catch(() => '');
+              const ariaLabel = await element.getAttribute('aria-label').catch(() => '');
+              
+              console.log(`🔍 Checking element ${i}: text="${text}", aria-label="${ariaLabel}"`);
+              
+              // Check if text/aria-label contains post-related keywords
+              const combined = (text + ' ' + ariaLabel).toLowerCase();
+              if (combined.includes('write') || combined.includes('post') || combined.includes('share') || 
+                  combined.includes('create') || combined.includes('mind') || combined.includes('discuss')) {
+                writeButton = element;
+                console.log(`✅ Found potential write button: "${text || ariaLabel}"`);
+                break;
+              }
+            } catch (err) {
+              continue;
+            }
+          }
+        } catch (error) {
+          console.log("❌ Element search failed:", error.message);
+        }
+      }
+      
+      // Method 3: Look for any input-like elements
+      if (!writeButton) {
+        console.log("🔍 Looking for any input-like elements...");
+        try {
+          const inputSelectors = [
+            'input[type="text"]:visible',
+            'textarea:visible',
+            'div[contenteditable="true"]:visible',
+            '[role="textbox"]:visible',
+          ];
+          
+          for (const selector of inputSelectors) {
+            try {
+              const element = page.locator(selector).first();
+              if (await element.isVisible({ timeout: 1000 })) {
+                writeButton = element;
+                console.log(`✅ Found input element: ${selector}`);
+                break;
+              }
+            } catch (err) {
+              continue;
+            }
+          }
+        } catch (error) {
+          console.log("❌ Input search failed:", error.message);
+        }
       }
     }
 

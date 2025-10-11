@@ -492,6 +492,49 @@ export const ensureLoggedIn = async ({ page, context }) => {
         
         if (loginCheck.success || !loginCheck.hasLoginForm) {
           console.log("✅ Session validation successful!");
+          
+          // Additional check: Try to access a Facebook group page to ensure full access
+          try {
+            console.log("🔍 Testing group access to verify full login...");
+            await page.goto('https://www.facebook.com/groups/feed/', { 
+              waitUntil: 'domcontentloaded', 
+              timeout: 15000 
+            });
+            await humanPause(2000, 3000);
+            
+            const groupAccessCheck = await page.evaluate(() => {
+              const url = window.location.href;
+              const content = document.body.innerText.toLowerCase();
+              
+              // Check for login redirects or error states
+              if (url.includes('login') || url.includes('checkpoint')) {
+                return { hasAccess: false, reason: 'Redirected to login/checkpoint' };
+              }
+              
+              if (content.includes('log in') || content.includes('sign in')) {
+                return { hasAccess: false, reason: 'Login form detected' };
+              }
+              
+              if (content.includes('groups') || content.includes('group') || 
+                  content.includes('facebook') || url.includes('facebook.com/groups')) {
+                return { hasAccess: true, reason: 'Groups page accessible' };
+              }
+              
+              return { hasAccess: false, reason: 'Unknown page state' };
+            });
+            
+            console.log(`🔍 Group access check: ${groupAccessCheck.hasAccess} - ${groupAccessCheck.reason}`);
+            
+            if (!groupAccessCheck.hasAccess) {
+              console.log("⚠️ Cannot access groups, login may be incomplete");
+            } else {
+              console.log("✅ Full Facebook access confirmed including groups");
+            }
+            
+          } catch (groupTestError) {
+            console.log("⚠️ Group access test failed, but continuing:", groupTestError.message);
+          }
+          
           sessionEstablished = true;
           break;
         }
