@@ -1,4 +1,4 @@
-import { runJobPostAutomation } from "../../../src/automation/job-post-runner.js";
+import { automationService } from "../services/automation.services.js";
 
 // Toggle manual 2FA mode
 export const toggleManual2FA = async (req, res) => {
@@ -69,20 +69,10 @@ export const runJobWithManual2FA = async (req, res) => {
     console.log("🖥️ Starting job posting with manual 2FA mode enabled");
     console.log("🔧 Browser window will be visible for manual 2FA completion");
     
-    // Get user credentials - for demo, using the default user
-    const credentials = {
-      email: "airecuritement@gmail.com",
-      password: process.env.FB_PASSWORD || "your_password_here" // You'll need to set this
-    };
+    // Use the automation service with a default user ID (you may want to get this from auth)
+    const defaultUserId = "cmgm1fmmm0000pp01qr9am19b"; // Replace with actual user ID logic
     
-    // Find the job if jobId provided, otherwise use any active job
-    let jobData = null;
-    if (jobId) {
-      // You would implement job lookup here
-      console.log(`🔍 Looking for job with ID: ${jobId}`);
-    }
-    
-    const result = await runJobPostAutomation(credentials, jobData);
+    const result = await automationService.runJobPostAutomationForUser(defaultUserId, jobId);
     
     // Restore previous settings
     process.env.MANUAL_2FA = previousManual2FA;
