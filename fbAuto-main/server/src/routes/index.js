@@ -6,7 +6,7 @@ import jobRouter from './job.route.js'
 import candidateRouter from './candidate.route.js'
 import cookieRouter from './cookie.router.js'
 import manual2FARouter from './manual-2fa.router.js'
-const tokenRouter = require('./token.router.js')
+import tokenRouter from './token.router.js'
 import { automationService } from "../services/automation.services.js";
 import { jobPostScheduler } from "../services/job-post-scheduler.js";
 

@@ -1,5 +1,6 @@
-const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
+import jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
+import { JWT_SECRET } from '../credentials.js';
 
 const prisma = new PrismaClient();
 
@@ -29,7 +30,7 @@ const generateBookmarkletToken = async (req, res) => {
         email: user.email,
         purpose: 'bookmarklet-automation'
       },
-      process.env.JWT_SECRET || 'your-secret-key',
+            JWT_SECRET,
       { expiresIn: '30d' } // Long-lived token for automation
     );
 
@@ -59,7 +60,7 @@ const validateToken = async (req, res) => {
       return res.status(400).json({ error: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     // Check if user still exists
     const user = await prisma.user.findUnique({
@@ -133,7 +134,7 @@ const getTokenInfo = async (req, res) => {
   }
 };
 
-module.exports = {
+export {
   generateBookmarkletToken,
   validateToken,
   getTokenInfo

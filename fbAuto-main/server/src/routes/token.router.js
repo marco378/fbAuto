@@ -1,10 +1,11 @@
-const express = require('express');
-const router = express.Router();
-const { 
+import express from 'express';
+import { 
   generateBookmarkletToken, 
   validateToken, 
   getTokenInfo 
-} = require('../controllers/token.controller');
+} from '../controllers/token.controller.js';
+
+const router = express.Router();
 
 /**
  * Public endpoint to generate a fresh token for bookmarklet automation
@@ -28,4 +29,4 @@ router.get('/validate', validateToken);
  */
 router.get('/info', getTokenInfo);
 
-module.exports = router;
+export default router;
