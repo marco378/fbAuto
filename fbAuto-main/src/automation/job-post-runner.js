@@ -12,7 +12,7 @@ let currentJobUser = null;
 
 // MINIMAL browser configuration - remove all potentially problematic flags
 const getJobPostBrowserConfig = () => ({
-  headless: process.env.NODE_ENV === 'production' || process.env.HEADLESS === 'true',
+  headless: process.env.NODE_ENV === 'production' && process.env.MANUAL_2FA !== 'true' && process.env.HEADLESS !== 'false',
   args: [
     "--no-sandbox",
     "--disable-dev-shm-usage",
@@ -112,7 +112,7 @@ async function getJobPostContextForUser(browser, userEmail) {
         const persistentDir = path.join('/tmp', 'fb-persistent', userEmail.replace('@', '_').replace(/\./g, '_'));
         
         jobPostContext = await chromium.launchPersistentContext(persistentDir, {
-          headless: process.env.NODE_ENV === 'production' || process.env.HEADLESS === 'true',
+          headless: process.env.NODE_ENV === 'production' && process.env.MANUAL_2FA !== 'true' && process.env.HEADLESS !== 'false',
           args: [
             "--no-sandbox",
             "--disable-dev-shm-usage",

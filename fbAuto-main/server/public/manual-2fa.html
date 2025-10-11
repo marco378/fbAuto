@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual 2FA Controller - fbAuto</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #1877F2; }
+        h2 { color: #333; margin-top: 30px; }
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        .enabled { background-color: #d4edda; color: #155724; }
+        .disabled { background-color: #f8d7da; color: #721c24; }
+        button {
+            background-color: #1877F2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 10px 10px 0;
+            font-size: 16px;
+        }
+        button:hover { background-color: #166fe5; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover { background-color: #c82333; }
+        button.success { background-color: #28a745; }
+        button.success:hover { background-color: #218838; }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .instructions {
+            background-color: #e7f3ff;
+            border-left: 4px solid #1877F2;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Manual 2FA Controller</h1>
+        
+        <div class="instructions">
+            <h3>📝 How to Use Manual 2FA Mode:</h3>
+            <p><strong>1.</strong> Click "Enable Manual 2FA Mode" to show browser windows</p>
+            <p><strong>2.</strong> Run a job posting - browser will open visibly</p>
+            <p><strong>3.</strong> When Facebook shows 2FA challenge, complete it manually in the browser</p>
+            <p><strong>4.</strong> The automation will detect completion and continue automatically</p>
+            <p><strong>5.</strong> Disable manual mode when done to return to headless operation</p>
+        </div>
+
+        <div id="status" class="status">Loading status...</div>
+
+        <h2>🖥️ Mode Controls</h2>
+        <button id="enableBtn" onclick="toggleManual2FA(true)" class="success">Enable Manual 2FA Mode</button>
+        <button id="disableBtn" onclick="toggleManual2FA(false)" class="danger">Disable Manual 2FA Mode</button>
+        <button onclick="refreshStatus()">🔄 Refresh Status</button>
+
+        <h2>🚀 Job Posting</h2>
+        <button onclick="runJobWithManual2FA()" class="success">Run Job Posting (Manual 2FA)</button>
+        <button onclick="runJobRegular()" class="">Run Job Posting (Auto 2FA)</button>
+
+        <h2>📋 Response Log</h2>
+        <div id="log" class="log">Ready to process requests...</div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api/manual-2fa';
+        
+        async function refreshStatus() {
+            try {
+                log('🔍 Checking 2FA status...');
+                const response = await fetch(`${API_BASE}/status`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus(data);
+                    log(`✅ Status: ${data.message}`);
+                } else {
+                    log(`❌ Error: ${data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Network error: ${error.message}`);
+            }
+        }
+
+        async function toggleManual2FA(enable) {
+            try {
+                log(`🔄 ${enable ? 'Enabling' : 'Disabling'} manual 2FA mode...`);
+                
+                const response = await fetch(`${API_BASE}/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enable })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus(data);
+                    log(`✅ ${data.message}`);
+                } else {
+                    log(`❌ Error: ${data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Network error: ${error.message}`);
+            }
+        }
+
+        async function runJobWithManual2FA() {
+            try {
+                log('🚀 Starting job posting with manual 2FA...');
+                log('🖥️ Browser window will open - complete 2FA manually when prompted');
+                
+                const response = await fetch(`${API_BASE}/run-job`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✅ Job posting completed successfully!`);
+                    log(`📊 Result: ${JSON.stringify(data.result, null, 2)}`);
+                } else {
+                    log(`❌ Job posting failed: ${data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Network error: ${error.message}`);
+            }
+        }
+
+        async function runJobRegular() {
+            try {
+                log('🤖 Starting regular job posting (auto 2FA)...');
+                
+                const response = await fetch('/api/jobs/post-automation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`✅ Job posting started successfully!`);
+                } else {
+                    log(`❌ Job posting failed: ${data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Network error: ${error.message}`);
+            }
+        }
+
+        function updateStatus(data) {
+            const statusDiv = document.getElementById('status');
+            const enableBtn = document.getElementById('enableBtn');
+            const disableBtn = document.getElementById('disableBtn');
+            
+            if (data.manual2FA) {
+                statusDiv.className = 'status enabled';
+                statusDiv.textContent = '🖥️ Manual 2FA Mode: ENABLED - Browser windows will be visible';
+                enableBtn.disabled = true;
+                disableBtn.disabled = false;
+            } else {
+                statusDiv.className = 'status disabled';
+                statusDiv.textContent = '🤖 Manual 2FA Mode: DISABLED - Browser runs headless';
+                enableBtn.disabled = false;
+                disableBtn.disabled = true;
+            }
+        }
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Load initial status
+        refreshStatus();
+        
+        // Auto-refresh status every 30 seconds
+        setInterval(refreshStatus, 30000);
+    </script>
+</body>
+</html>
