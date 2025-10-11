@@ -115,23 +115,30 @@ const handleCommon2FAScenarios = async (page) => {
     // Wait a bit for the page to load completely
     await humanPause(3000, 5000);
     
-    // Check if we're on a 2FA page that can be bypassed
+    // Get current URL and page content for analysis
+    const currentUrl = page.url();
     const pageContent = await page.content();
+    const contentLower = pageContent.toLowerCase();
     
-    // Look for "Remember this browser" or "Don't ask again" options
+    console.log(`🔍 2FA Page Analysis: URL contains ${currentUrl.includes('checkpoint') ? 'checkpoint' : 'no checkpoint'}`);
+    
+    // Strategy 1: Look for "Remember this browser" or "Don't ask again" options
+    console.log("🔐 Strategy 1: Looking for device trust options...");
     const trustDeviceSelectors = [
       'input[name="remember_browser"]',
       'input[type="checkbox"][value="1"]',
       'label:has-text("Remember this browser")',
       'label:has-text("Don\'t ask again")',
       'label:has-text("Save device")',
+      'input[name="save_device"]',
+      'input[id="remember_browser"]',
     ];
     
     for (const selector of trustDeviceSelectors) {
       try {
         const element = await page.locator(selector).first();
         if (await element.isVisible({ timeout: 2000 })) {
-          console.log(`🔐 Found "Remember this browser" option, checking it...`);
+          console.log(`🔐 Found "Remember this browser" option: ${selector}`);
           await element.check();
           await humanPause(1000, 2000);
         }
@@ -140,7 +147,8 @@ const handleCommon2FAScenarios = async (page) => {
       }
     }
     
-    // Common selectors for 2FA "Continue" or "Skip" buttons
+    // Strategy 2: Common selectors for 2FA "Continue" or "Skip" buttons
+    console.log("🎯 Strategy 2: Looking for skip/continue buttons...");
     const autoClickSelectors = [
       'button[name="__CONFIRM__"]',
       '#checkpointSubmitButton',
@@ -160,6 +168,11 @@ const handleCommon2FAScenarios = async (page) => {
       'button[value="submit"]',
       'input[type="submit"]',
       'button[type="submit"]',
+      // Additional checkpoint selectors
+      'button[name="submit[Continue]"]',
+      'button[name="submit[Skip]"]',
+      'input[name="submit[Continue]"]',
+      'input[name="submit[Skip]"]',
     ];
     
     for (const selector of autoClickSelectors) {
@@ -186,12 +199,108 @@ const handleCommon2FAScenarios = async (page) => {
           }
         }
       } catch (err) {
-        // Continue to next selector if this one fails
         continue;
       }
     }
     
-    // Try to dismiss any overlays or modals
+    // Strategy 3: Look for "Try Another Way" or alternative authentication methods
+    console.log("🔄 Strategy 3: Looking for alternative authentication methods...");
+    const alternativeAuthSelectors = [
+      'a:has-text("Try Another Way")',
+      'button:has-text("Try Another Way")',
+      'a:has-text("Use text message")',
+      'a:has-text("Get help")',
+      'button:has-text("Get help")',
+      '[data-testid="try_another_way"]',
+    ];
+    
+    for (const selector of alternativeAuthSelectors) {
+      try {
+        const element = await page.locator(selector).first();
+        if (await element.isVisible({ timeout: 2000 })) {
+          console.log(`🔄 Found alternative auth method: ${selector}`);
+          await element.click();
+          await humanPause(3000, 5000);
+          
+          // After clicking "Try Another Way", look for skip options again
+          const skipAfterAlternative = await page.locator('button:has-text("Skip"), a:has-text("Skip"), button:has-text("Not Now")').first();
+          if (await skipAfterAlternative.isVisible({ timeout: 3000 })) {
+            console.log("🎯 Found skip option after alternative method");
+            await skipAfterAlternative.click();
+            await humanPause(2000, 3000);
+          }
+        }
+      } catch (err) {
+        continue;
+      }
+    }
+    
+    // Strategy 4: Force navigation away from checkpoint if still stuck
+    console.log("🚀 Strategy 4: Attempting direct navigation to bypass...");
+    try {
+      const currentUrlAfter = page.url();
+      if (currentUrlAfter.includes('checkpoint') || currentUrlAfter.includes('two_factor')) {
+        console.log("🔄 Still on checkpoint, attempting direct navigation to groups...");
+        await page.goto('https://www.facebook.com/groups/feed/', { 
+          waitUntil: 'domcontentloaded', 
+          timeout: 10000 
+        });
+        await humanPause(3000, 5000);
+        
+        const bypassCheck = await page.evaluate(() => {
+          return !window.location.href.includes('checkpoint') && 
+                 !window.location.href.includes('login') &&
+                 !window.location.href.includes('two_factor');
+        });
+        
+        if (bypassCheck) {
+          console.log("✅ Successfully bypassed checkpoint via direct navigation!");
+          return true;
+        }
+      }
+    } catch (navError) {
+      console.log("⚠️ Direct navigation bypass failed:", navError.message);
+    }
+    
+    // Strategy 5: Attempt to auto-fill any text input if it's asking for verification code
+    console.log("📱 Strategy 5: Checking for text verification inputs...");
+    try {
+      const textInputs = await page.locator('input[type="text"], input[type="tel"], input[type="number"]').all();
+      
+      if (textInputs.length > 0) {
+        console.log(`📱 Found ${textInputs.length} text input(s), checking if it's verification code...`);
+        
+        for (const input of textInputs) {
+          try {
+            const placeholder = await input.getAttribute('placeholder').catch(() => '');
+            const name = await input.getAttribute('name').catch(() => '');
+            const id = await input.getAttribute('id').catch(() => '');
+            
+            const combined = (placeholder + ' ' + name + ' ' + id).toLowerCase();
+            
+            if (combined.includes('code') || combined.includes('verification') || combined.includes('security')) {
+              console.log(`📱 Found verification code input: ${placeholder || name || id}`);
+              
+              // Look for "Try Another Way" or "Skip" near this input
+              const skipNearInput = await page.locator('button:has-text("Skip"), a:has-text("Skip"), button:has-text("Try Another Way"), a:has-text("Try Another Way")').first();
+              if (await skipNearInput.isVisible({ timeout: 2000 })) {
+                console.log("🎯 Found skip option near verification input");
+                await skipNearInput.click();
+                await humanPause(2000, 3000);
+                return true;
+              }
+            }
+          } catch (err) {
+            continue;
+          }
+        }
+      }
+    } catch (inputError) {
+      console.log("⚠️ Text input check failed:", inputError.message);
+    }
+    
+    // Strategy 6: Try to dismiss any overlays or modals
+    console.log("❌ Strategy 6: Attempting to dismiss overlays...");
     const dismissSelectors = [
       '[aria-label="Close"]',
       '[data-testid="modal_close_button"]',
@@ -378,10 +487,44 @@ export const ensureLoggedIn = async ({ page, context }) => {
     // Set global flag
     global2FAInProgress = true;
     
-    // Try to handle common 2FA scenarios automatically
-    const handled = await handleCommon2FAScenarios(page);
+    // Try to handle common 2FA scenarios automatically with retries
+    console.log("🔄 Attempting aggressive 2FA bypass with multiple strategies...");
     
-    if (!handled) {
+    let resolved = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      console.log(`🎯 2FA Bypass Attempt ${attempt}/3`);
+      
+      try {
+        resolved = await handleCommon2FAScenarios(page);
+        if (resolved) {
+          console.log(`✅ 2FA resolved on attempt ${attempt}!`);
+          break;
+        }
+        
+        // If not resolved, wait a bit and try again
+        if (attempt < 3) {
+          console.log(`⏳ Attempt ${attempt} failed, waiting before retry...`);
+          await humanPause(3000, 5000);
+        }
+      } catch (handleError) {
+        console.log(`❌ 2FA handling attempt ${attempt} error:`, handleError.message);
+        if (attempt < 3) {
+          await humanPause(2000, 3000);
+        }
+      }
+    }
+    
+    // Clear global flag
+    global2FAInProgress = false;
+    global2FACompletedAt = Date.now();
+    
+    if (resolved) {
+      console.log("✅ 2FA challenge successfully bypassed automatically!");
+      await humanPause(2000, 3000);
+    } else {
+      console.log("⚠️ Automatic 2FA bypass failed, but continuing...");
+      // Don't throw error - let the system continue and see if it can proceed
+      
       console.log("🔧 Please complete the 2FA/checkpoint in the browser window");
       console.log("🔧 The automation will automatically continue once completed");
 
