@@ -104,7 +104,7 @@ const detectChallenges = async (page) => {
   return false;
 };
 
-// ✅ Main login flow with cookie validation
+// ✅ Main login flow with aggressive cookie validation to avoid 2FA
 export const ensureLoggedIn = async ({ page, context }) => {
   const credentials = {
     email: "airecuritement@gmail.com",
@@ -114,7 +114,7 @@ export const ensureLoggedIn = async ({ page, context }) => {
   const { email, password } = credentials;
   console.log(`🔑 Attempting login for: ${email}`);
 
-  // Try loading cookies
+  // AGGRESSIVE: Try loading cookies first and test them extensively
   const cookiesLoaded = await loadCookiesFromStorage(context, email);
 
   if (cookiesLoaded) {
@@ -122,7 +122,7 @@ export const ensureLoggedIn = async ({ page, context }) => {
       // More conservative navigation in production
       if (process.env.NODE_ENV === 'production') {
         console.log("🌐 Navigating to Facebook (production mode with stability)...");
-        await page.goto(FB.base, { 
+        await page.goto("https://www.facebook.com/", { 
           waitUntil: "domcontentloaded", 
           timeout: 60000 
         });
@@ -131,9 +131,29 @@ export const ensureLoggedIn = async ({ page, context }) => {
           console.log("⚠️ Network idle timeout, continuing anyway...");
         });
       } else {
-        await page.goto(FB.base, { waitUntil: "load", timeout: 30000 });
+        await page.goto("https://www.facebook.com/", { waitUntil: "load", timeout: 30000 });
       }
       await page.waitForTimeout(2000);
+      
+      // ENHANCED: Check multiple indicators that we're logged in
+      const isLoggedIn = await page.evaluate(() => {
+        // Check for multiple login indicators
+        const indicators = [
+          document.querySelector('[data-testid="react-composer-post-button"]'),
+          document.querySelector('[aria-label*="Account"]'),
+          document.querySelector('[data-testid="blue_bar"]'),
+          document.querySelector('div[role="main"]'),
+          !document.querySelector('#email'), // No login form
+          !document.querySelector('input[name="email"]'), // No email input
+        ];
+        return indicators.filter(Boolean).length >= 3; // At least 3 indicators
+      });
+      
+      if (isLoggedIn) {
+        console.log("✅ Already logged in via cookies - 2FA skipped!");
+        await saveCookiesToStorage(context, email); // refresh cookies
+        return true;
+      }
     } catch (navError) {
       console.error("❌ Navigation error:", navError.message);
       console.log("🔄 Attempting fresh login instead...");

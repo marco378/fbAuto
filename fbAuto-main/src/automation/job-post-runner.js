@@ -3,6 +3,7 @@ import { chromium } from "playwright";
 import { ensureLoggedIn } from "./facebook-login.js";
 import { humanPause } from "./utils/delays.js";
 import { prisma } from "../lib/prisma.js";
+import path from "path";
 
 // Store browser context globally for job posting
 let jobPostBrowser = null;
@@ -51,6 +52,10 @@ const getJobPostBrowserConfig = () => ({
     "--password-store=basic",
     "--use-mock-keychain",
     "--single-process",
+    // Add flags to appear more like a regular browser
+    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "--accept-lang=en-US,en;q=0.9",
+    "--window-size=1366,768",
   ],
 });
 
@@ -86,7 +91,7 @@ async function initializeJobPostBrowser() {
   }
 }
 
-// MINIMAL context creation
+// MINIMAL context creation with persistent storage to reduce 2FA
 async function getJobPostContextForUser(browser, userEmail) {
   try {
     if (jobPostContext && currentJobUser !== userEmail) {
@@ -97,24 +102,49 @@ async function getJobPostContextForUser(browser, userEmail) {
 
     if (!jobPostContext) {
       console.log(`🌍 Creating minimal context for: ${userEmail}`);
-      jobPostContext = await browser.newContext({
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        viewport: { width: 1366, height: 768 },
-      });
+      
+      // Use persistent context to maintain login state and reduce 2FA triggers
+      const userDataDir = path.join(process.cwd(), '.browser-data', userEmail.replace('@', '_').replace(/\./g, '_'));
+      
+      try {
+        // Try creating persistent context first to maintain session state
+        jobPostContext = await chromium.launchPersistentContext(userDataDir, {
+          ...getJobPostBrowserConfig(),
+          viewport: { width: 1366, height: 768 },
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          locale: "en-US",
+          timezoneId: "America/New_York",
+          geolocation: { latitude: 40.7128, longitude: -74.0060 }, // NYC coordinates
+          permissions: ['geolocation'],
+          extraHTTPHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        });
+        console.log("✅ Using persistent context to maintain login state");
+      } catch (persistentError) {
+        console.log("⚠️ Fallback to regular context:", persistentError.message);
+        // Fallback to regular context if persistent fails
+        jobPostContext = await browser.newContext({
+          viewport: { width: 1366, height: 768 },
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          locale: "en-US",
+          timezoneId: "America/New_York",
+          extraHTTPHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9',
+          }
+        });
+      }
 
       currentJobUser = userEmail;
-
-      jobPostContext.on("close", () => {
-        console.log("🔌 Context closed");
-        jobPostContext = null;
-        currentJobUser = null;
-      });
     }
 
     return jobPostContext;
   } catch (error) {
-    console.error("❌ Failed to get context:", error);
+    console.error("❌ Failed to create context:", error);
     throw error;
   }
 }
