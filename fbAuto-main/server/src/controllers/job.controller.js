@@ -630,3 +630,150 @@ export const getJobAnalytics = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// Client-side automation: Get jobs ready for bookmarklet posting
+export const getJobsForClientAutomation = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Get jobs that have Facebook groups but haven't been posted to all groups yet
+    const jobsToPost = await prisma.job.findMany({
+      where: {
+        userId,
+        isActive: true,
+        facebookGroups: {
+          isEmpty: false,
+        },
+      },
+      include: {
+        posts: {
+          where: {
+            status: { in: ["SUCCESS", "FAILED"] }
+          },
+          select: {
+            facebookGroup: true,
+            status: true,
+          }
+        }
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // Process jobs to find groups that need posting
+    const automationJobs = jobsToPost
+      .map(job => {
+        // Get groups that haven't been successfully posted to
+        const postedGroups = new Set(
+          job.posts
+            .filter(p => p.status === "SUCCESS")
+            .map(p => p.facebookGroup)
+        );
+        
+        const pendingGroups = job.facebookGroups.filter(
+          group => !postedGroups.has(group)
+        );
+
+        if (pendingGroups.length === 0) {
+          return null; // Skip jobs with no pending groups
+        }
+
+        return {
+          id: job.id,
+          title: job.title,
+          company: job.company,
+          location: job.location,
+          jobType: job.jobType,
+          salaryRange: job.salaryRange,
+          description: job.description,
+          requirements: job.requirements || [],
+          responsibilities: job.responsibities || [], // Note: keeping original typo for consistency
+          perks: job.perks,
+          pendingGroups,
+          totalGroups: job.facebookGroups.length,
+          completedGroups: postedGroups.size,
+          createdAt: job.createdAt,
+        };
+      })
+      .filter(Boolean); // Remove null entries
+
+    res.json({
+      success: true,
+      jobs: automationJobs,
+      totalJobs: automationJobs.length,
+      message: `Found ${automationJobs.length} jobs ready for client-side automation`,
+    });
+
+  } catch (error) {
+    console.error("Get client automation jobs error:", error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+};
+
+// Update job posting status from client-side automation
+export const updateJobPostingStatus = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { facebookGroup, status, postUrl, error: postError } = req.body;
+    const userId = req.user.userId;
+
+    // Verify job belongs to user
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId }
+    });
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: "Job not found or access denied"
+      });
+    }
+
+    // Create or update the post record
+    const postData = {
+      jobId,
+      facebookGroup,
+      status: status.toUpperCase(),
+      postUrl: postUrl || null,
+      error: postError || null,
+      postedAt: status.toLowerCase() === "success" ? new Date() : null,
+    };
+
+    // Check if post already exists for this job and group
+    const existingPost = await prisma.jobPost.findFirst({
+      where: {
+        jobId,
+        facebookGroup,
+      }
+    });
+
+    let post;
+    if (existingPost) {
+      post = await prisma.jobPost.update({
+        where: { id: existingPost.id },
+        data: postData,
+      });
+    } else {
+      post = await prisma.jobPost.create({
+        data: postData,
+      });
+    }
+
+    res.json({
+      success: true,
+      post,
+      message: `Job posting status updated for ${facebookGroup}`,
+    });
+
+  } catch (error) {
+    console.error("Update job posting status error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};

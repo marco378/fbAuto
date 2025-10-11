@@ -9,7 +9,9 @@ import {
   postJobToFacebook, 
   updateJob,
   processPendingJob,
-  processAllPendingJobs
+  processAllPendingJobs,
+  getJobsForClientAutomation,
+  updateJobPostingStatus
 } from '../controllers/job.controller.js'
 import { verifyToken } from '../middlewares/auth.middleware.js'
 
@@ -28,6 +30,10 @@ jobRouter.delete('/:jobId', deleteJob);
 // Job posting routes
 jobRouter.post('/:jobId/post-to-facebook', postJobToFacebook);
 jobRouter.get('/:jobId/analytics', getJobAnalytics);
+
+// Client-side automation routes
+jobRouter.get('/client-automation', getJobsForClientAutomation);
+jobRouter.post('/:jobId/update-posting-status', updateJobPostingStatus);
 
 // NEW: Pending job processing routes
 jobRouter.post('/pending/process-all', processAllPendingJobs);
