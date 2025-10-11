@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "FB Auto Job Poster",
+  "version": "1.0.0",
+  "description": "Automatically posts jobs to Facebook groups when created",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "background",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.facebook.com/*",
+    "https://fbauto-production-4368.up.railway.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.facebook.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "FB Auto Job Poster"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
