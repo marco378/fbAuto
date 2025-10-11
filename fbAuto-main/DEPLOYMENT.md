@@ -25,4 +25,4 @@ SLOWMO=0
 ```
 
 ## Your app will be available at:
-`https://your-app-name.up.railway.app`
+`fbauto-production.up.railway.app`
