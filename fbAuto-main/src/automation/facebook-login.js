@@ -121,6 +121,59 @@ const handleCommon2FAScenarios = async (page) => {
     const contentLower = pageContent.toLowerCase();
     
     console.log(`🔍 2FA Page Analysis: URL contains ${currentUrl.includes('checkpoint') ? 'checkpoint' : 'no checkpoint'}`);
+    console.log(`🔍 Current URL: ${currentUrl}`);
+    
+    // Get page title for more context
+    const pageTitle = await page.title().catch(() => 'Unknown');
+    console.log(`📄 Page title: ${pageTitle}`);
+    
+    // Check what type of challenge this might be
+    if (contentLower.includes('verify') || contentLower.includes('security check')) {
+      console.log("🔒 Detected: Identity verification challenge");
+    }
+    if (contentLower.includes('code') || contentLower.includes('authentication')) {
+      console.log("📱 Detected: Authentication code challenge");
+    }
+    if (contentLower.includes('phone') || contentLower.includes('mobile')) {
+      console.log("📞 Detected: Phone verification challenge");
+    }
+    
+    // Debug: Find ALL clickable elements on the page
+    console.log("🔍 Analyzing all clickable elements on page...");
+    try {
+      const allButtons = await page.locator('button, input[type="submit"], input[type="button"], a[role="button"], div[role="button"]').all();
+      console.log(`📊 Found ${allButtons.length} potentially clickable elements`);
+      
+      // Log first 10 clickable elements for debugging
+      for (let i = 0; i < Math.min(allButtons.length, 10); i++) {
+        try {
+          const element = allButtons[i];
+          const tagName = await element.evaluate(el => el.tagName).catch(() => 'unknown');
+          const text = await element.textContent().catch(() => '');
+          const ariaLabel = await element.getAttribute('aria-label').catch(() => '');
+          const className = await element.getAttribute('class').catch(() => '');
+          const id = await element.getAttribute('id').catch(() => '');
+          
+          console.log(`🔍 Element ${i + 1}: <${tagName}> text="${text.slice(0, 50)}" aria-label="${ariaLabel.slice(0, 30)}" class="${className.slice(0, 30)}" id="${id}"`);
+        } catch (err) {
+          console.log(`🔍 Element ${i + 1}: Error reading properties`);
+        }
+      }
+    } catch (debugError) {
+      console.log("⚠️ Could not analyze clickable elements:", debugError.message);
+    }
+    
+    // Take a screenshot for debugging
+    try {
+      const screenshotPath = `/tmp/facebook-2fa-debug-${Date.now()}.png`;
+      await page.screenshot({ 
+        path: screenshotPath,
+        fullPage: true 
+      });
+      console.log(`📸 2FA page screenshot saved: ${screenshotPath}`);
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save 2FA screenshot:", screenshotError.message);
+    }
     
     // Strategy 1: Look for "Remember this browser" or "Don't ask again" options
     console.log("🔐 Strategy 1: Looking for device trust options...");
@@ -147,7 +200,7 @@ const handleCommon2FAScenarios = async (page) => {
       }
     }
     
-    // Strategy 2: Common selectors for 2FA "Continue" or "Skip" buttons
+        // Strategy 2: Common selectors for 2FA "Continue" or "Skip" buttons
     console.log("🎯 Strategy 2: Looking for skip/continue buttons...");
     const autoClickSelectors = [
       'button[name="__CONFIRM__"]',
@@ -173,7 +226,60 @@ const handleCommon2FAScenarios = async (page) => {
       'button[name="submit[Skip]"]',
       'input[name="submit[Continue]"]',
       'input[name="submit[Skip]"]',
+      // More general selectors
+      'button:visible',
+      'input[type="submit"]:visible',
+      'a[role="button"]:visible',
     ];
+    
+    let foundElement = false;
+    for (const selector of autoClickSelectors) {
+      try {
+        const elements = await page.locator(selector).all();
+        if (elements.length > 0) {
+          console.log(`🔍 Found ${elements.length} element(s) with selector: ${selector}`);
+          
+          for (let i = 0; i < elements.length; i++) {
+            const element = elements[i];
+            if (await element.isVisible()) {
+              const text = await element.textContent().catch(() => '');
+              const ariaLabel = await element.getAttribute('aria-label').catch(() => '');
+              console.log(`🎯 Clickable element found: "${text || ariaLabel}" (${selector})`);
+              
+              await element.click();
+              await humanPause(2000, 3000);
+              foundElement = true;
+              
+              // Check if this resolved the challenge
+              const resolved = await page.evaluate(() => {
+                return !document.querySelector('#email') && 
+                       !document.querySelector('input[name="email"]') &&
+                       (document.querySelector('[data-testid="react-composer-post-button"]') ||
+                        document.querySelector('[aria-label*="Account"]') ||
+                        document.querySelector('div[role="main"]') ||
+                        (window.location.href.includes('facebook.com') && !window.location.href.includes('login') && !window.location.href.includes('checkpoint')));
+              });
+              
+              if (resolved) {
+                console.log("✅ 2FA automatically resolved!");
+                return true;
+              } else {
+                console.log("⚠️ Click didn't resolve challenge, trying next element...");
+              }
+            }
+          }
+        } else {
+          console.log(`❌ No elements found for selector: ${selector}`);
+        }
+      } catch (err) {
+        console.log(`❌ Selector ${selector} failed: ${err.message}`);
+        continue;
+      }
+    }
+    
+    if (!foundElement) {
+      console.log("❌ No clickable elements found in Strategy 2");
+    }
     
     for (const selector of autoClickSelectors) {
       try {
