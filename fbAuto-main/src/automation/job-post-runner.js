@@ -18,6 +18,13 @@ const getJobPostBrowserConfig = () => ({
     "--disable-blink-features=AutomationControlled",
     "--no-first-run",
     "--disable-infobars",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-features=TranslateUI",
+    "--disable-ipc-flooding-protection",
+    "--memory-pressure-off",
+    "--max_old_space_size=2048",
   ],
 });
 
@@ -772,6 +779,19 @@ export async function runJobPostAutomation(credentials, jobData = null) {
       });
 
       if (!jobData) throw new Error("No active jobs found");
+    } else {
+      // Validate that the provided jobData exists in the database
+      const existingJob = await prisma.job.findUnique({
+        where: { id: jobData.id },
+        include: { posts: true },
+      });
+      
+      if (!existingJob) {
+        throw new Error(`Job with ID ${jobData.id} not found in database`);
+      }
+      
+      // Use the fresh data from database to ensure consistency
+      jobData = existingJob;
     }
 
     console.log(`📋 Job: ${jobData.title} at ${jobData.company}`);
