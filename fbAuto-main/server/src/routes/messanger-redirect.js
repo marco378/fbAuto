@@ -1,6 +1,6 @@
-const MESSENGER_LINK = "https://m.me/61579236676817";
-const N8N_WEBHOOK_URL = process.env.N8N_JOB_CONTEXT_WEBHOOK_URL || 'https://prudvi.app.n8n.cloud/webhook-test/webhook-test';
-const VERIFY_TOKEN = process.env.FACEBOOK_VERIFY_TOKEN || 'EAAUNrA8WQrUBPc75RtQwhCQiZAgmG8yHhmJdT6CVluVcS7JK2BVnntUFtyAq9DUYMx2ScZCl4FVYr2PxbVfZAvM4TZBlJPo49YNmrPKI9SVjSCFk28Wsdzp0ZCry5BPuOxuV4EPYOuZCrvmz9V99NkqbEXhPWZBDhGDbfMVPGAUNuHkWMgbP7d52gxj1RVEZCcyBMxjX2gZDZD';
+const MESSENGER_LINK = "https://m.me/698738296664477";
+const N8N_WEBHOOK_URL = process.env.N8N_JOB_CONTEXT_WEBHOOK_URL || 'https://audace.app.n8n.cloud/webhook/webhook-test';
+const VERIFY_TOKEN = process.env.FACEBOOK_VERIFY_TOKEN || 'EAAUNrA8WQrUBPldXbeRnqYZAXzbWzi3BDZCsGFSljo8hrKdCIr0q4ZCBQMR79qjp3TTmYQU4aDF8n1TAClCyovCw9gIRiM5V22niGLVlehRdLBiIZB97pofTVD0HOgPPIhfv96JBuPMF8s8ctIrE9xyQcqR7XEqwANZBlYCGT0pPKfkcNpCnzYhg6NKUBmW8bbVyCGlowrgZDZD';
 import { prisma } from "../lib/prisma.js";
 
 export const messengerRedirectWithContext = async (req, res) => {
@@ -38,99 +38,97 @@ export const messengerRedirectWithContext = async (req, res) => {
         status: 'SUCCESS'
       },
       include: {
-        job: {
-          select: {
-            id: true,
-            title: true,
-            company: true,
-            isActive: true,
-            expiresAt: true
-          }
-        }
+        job: true
       }
     });
-
-    // If job post doesn't exist or parent job is inactive/deleted
-    if (!jobPost || !jobPost.job || !jobPost.job.isActive) {
-      console.log(`Job closed or deleted - JobPost ID: ${jobPostId}`);
-      
-      // Return simple HTML page directly
-      return res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Job Closed</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { 
-                    font-family: Arial, sans-serif; 
-                    text-align: center; 
-                    margin: 50px; 
-                    background-color: #f5f5f5; 
-                }
-                .container { 
-                    background: white; 
-                    padding: 40px; 
-                    border-radius: 10px; 
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
-                    max-width: 400px; 
-                    margin: 0 auto; 
-                }
-                h1 { color: #333; margin-bottom: 20px; }
-                p { color: #666; font-size: 16px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>Job Closed</h1>
-                <p>This job position is no longer available.</p>
-                <p>Thank you for your interest!</p>
-            </div>
-        </body>
-        </html>
-      `);
+    console.log('🔍 [DEBUG] jobPost object:', JSON.stringify(jobPost, null, 2));
+    if (jobPost && jobPost.job) {
+      console.log('🔍 [DEBUG] jobPost.job object:', JSON.stringify(jobPost.job, null, 2));
     }
 
-    // Check if job has expired
-    if (jobPost.job.expiresAt && new Date() > new Date(jobPost.job.expiresAt)) {
-      console.log(`Job expired - JobPost ID: ${jobPostId}`);
+  // If job post doesn't exist or parent job is inactive/deleted, show Job Closed page
+  if (!jobPost || !jobPost.job || !jobPost.job.isActive) {
+    console.log(`Job closed or deleted - JobPost ID: ${jobPostId}`);
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>Job Closed</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+              body { 
+                  font-family: Arial, sans-serif; 
+                  text-align: center; 
+                  margin: 50px; 
+                  background-color: #f5f5f5; 
+              }
+              .container { 
+                  background: white; 
+                  padding: 40px; 
+                  border-radius: 10px; 
+                  box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+                  max-width: 400px; 
+                  margin: 0 auto; 
+              }
+              h1 { color: #333; margin-bottom: 20px; }
+              p { color: #666; font-size: 16px; }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <h1>Job Closed</h1>
+              <p>This job position is no longer available.</p>
+              <p>Thank you for your interest!</p>
+          </div>
+      </body>
+      </html>
+    `);
+  } else {
+    // If jobPost and job are valid and active, always redirect to Messenger
+    console.log(`✅ Valid jobPost and job found, redirecting to Messenger: ${MESSENGER_LINK}`);
+    return res.redirect(MESSENGER_LINK);
+  }
+
+  // Check if job has expired
+  if (jobPost.job.expiresAt && new Date() > new Date(jobPost.job.expiresAt)) {
+    console.log(`Job expired - JobPost ID: ${jobPostId}`);
       
-      // Return simple HTML page directly
-      return res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Job Closed</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { 
-                    font-family: Arial, sans-serif; 
-                    text-align: center; 
-                    margin: 50px; 
-                    background-color: #f5f5f5; 
-                }
-                .container { 
-                    background: white; 
-                    padding: 40px; 
-                    border-radius: 10px; 
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
-                    max-width: 400px; 
-                    margin: 0 auto; 
-                }
-                h1 { color: #333; margin-bottom: 20px; }
-                p { color: #666; font-size: 16px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>Job Closed</h1>
-                <p>This job position is no longer available.</p>
-                <p>Thank you for your interest!</p>
-            </div>
-        </body>
-        </html>
-      `);
-    }
+    // Return simple HTML page directly
+    return res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Job Closed</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body { 
+          font-family: Arial, sans-serif; 
+          text-align: center; 
+          margin: 50px; 
+          background-color: #f5f5f5; 
+        }
+        .container { 
+          background: white; 
+          padding: 40px; 
+          border-radius: 10px; 
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+          max-width: 400px; 
+          margin: 0 auto; 
+        }
+        h1 { color: #333; margin-bottom: 20px; }
+        p { color: #666; font-size: 16px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Job Closed</h1>
+        <p>This job position is no longer available.</p>
+        <p>Thank you for your interest!</p>
+      </div>
+    </body>
+    </html>
+    `);
+  }
 
     // Job exists and is active - proceed with normal flow
     console.log(`Valid job access - JobPost ID: ${jobPostId}, Job: ${jobPost.job.title}`);
@@ -178,7 +176,6 @@ export const messengerRedirectWithContext = async (req, res) => {
     
   } catch (error) {
     console.error('❌ Error in messenger redirect:', error);
-    
     // On any error, return job closed page
     return res.send(`
       <!DOCTYPE html>
@@ -352,66 +349,61 @@ async function handleReferral(referral, senderId) {
 async function handleMessage(event, senderId) {
   console.log('💬 Message received from:', senderId);
   console.log('📝 Text:', event.message.text);
-  
+
   let jobContext = null;
   let sessionId = null;
 
-  // Check if this message has referral data (first message scenario)
+  // Always prioritize referral/session context if present
   if (event.message.referral && event.message.referral.ref) {
     console.log('🎯 First message with referral data!');
     sessionId = event.message.referral.ref;
-    
-    // Fetch context from database
     try {
       const contextSession = await prisma.jobContextSession.findUnique({
-        where: { 
+        where: {
           sessionToken: sessionId,
           isActive: true,
           expiresAt: { gt: new Date() }
         }
       });
-
       if (contextSession) {
         jobContext = contextSession.contextData;
-        console.log('✅ Job context retrieved from database:', jobContext.jobTitle);
-        
-        // Update with Facebook user ID if not already set
-        if (!contextSession.facebookUserId) {
-          await prisma.jobContextSession.update({
-            where: { id: contextSession.id },
-            data: { 
-              facebookUserId: senderId,
-              conversationStarted: true,
-              lastAccessedAt: new Date()
-            }
-          });
-        }
+        console.log('✅ [NEW] Job context from referral session:', jobContext.jobTitle, jobContext.company, 'Session:', sessionId);
+        // Always associate this Facebook user with this session (overwrite any previous association)
+        await prisma.jobContextSession.update({
+          where: { id: contextSession.id },
+          data: {
+            facebookUserId: senderId,
+            conversationStarted: true,
+            lastAccessedAt: new Date()
+          }
+        });
+      } else {
+        console.log('❌ No active context found for referral session:', sessionId);
       }
     } catch (error) {
-      console.error('❌ Failed to retrieve context from database:', error);
+      console.error('❌ Failed to retrieve context from referral session:', error);
     }
   } else {
-    // For subsequent messages, try to find context by Facebook user ID
+    // Fallback: find latest context by Facebook user ID
     try {
       const contextSession = await prisma.jobContextSession.findFirst({
-        where: { 
+        where: {
           facebookUserId: senderId,
           isActive: true,
           expiresAt: { gt: new Date() }
         },
-        orderBy: { lastAccessedAt: 'desc' } // Get most recent conversation
+        orderBy: { lastAccessedAt: 'desc' }
       });
-
       if (contextSession) {
         jobContext = contextSession.contextData;
         sessionId = contextSession.sessionToken;
-        console.log('✅ Retrieved existing context for user:', jobContext.jobTitle);
-        
-        // Update last accessed time
+        console.log('✅ [FALLBACK] Retrieved context for user:', jobContext.jobTitle, jobContext.company, 'Session:', sessionId);
         await prisma.jobContextSession.update({
           where: { id: contextSession.id },
           data: { lastAccessedAt: new Date() }
         });
+      } else {
+        console.log('❌ No context found for Facebook user:', senderId);
       }
     } catch (error) {
       console.error('❌ Failed to retrieve context by user ID:', error);
@@ -430,9 +422,9 @@ async function handleMessage(event, senderId) {
     jobContext: jobContext, // Will be null if no context found
     source: 'facebook_messenger_message'
   };
-  
+
   await sendToN8N(webhookPayload);
-  console.log('📤 Message data sent to N8N with context');
+  console.log('📤 Message data sent to N8N with context:', webhookPayload.jobContext ? webhookPayload.jobContext.jobTitle : 'NO CONTEXT', webhookPayload.jobContext ? webhookPayload.jobContext.company : '');
 }
 
 async function sendToN8N(payload) {
@@ -455,3 +447,6 @@ async function sendToN8N(payload) {
     console.error('❌ Error sending to N8N:', error);
   }
 }
+
+// Express route for messenger redirect
+router.get('/api/messenger-redirect', messengerRedirectWithContext);
