@@ -132,10 +132,9 @@ async function isPageLikelyRecovered(page) {
   }
 }
 
-// Generate messenger link for job application - MATCHES WEBHOOK FORMAT
+// Generate messenger link for job application - FIXED VERSION
 async function generateMessengerLink(jobData, jobPostId) {
   try {
-    // Use FULL field names (not abbreviated) to match webhook expectations
     const contextData = {
       jobPostId,
       jobTitle: jobData.title,
@@ -144,29 +143,27 @@ async function generateMessengerLink(jobData, jobPostId) {
       requirements: jobData.requirements,
       description: jobData.description,
       jobType: jobData.jobType,
-      experience: jobData.experiance, // Keep your spelling
+      experience: jobData.experiance,
       salaryRange: jobData.salaryRange,
       responsibilities: jobData.responsibilities || [],
       perks: jobData.perks,
       timestamp: Date.now(),
     };
 
-    // Use base64url encoding to match your webhook (safer for URLs)
+    // ✅ FIXED: Use Railway URL from environment variable or fallback to your Railway domain
+    const DOMAIN_URL = process.env.RAILWAY_URL || "https://fbauto-production-4368.up.railway.app";
     const encodedContext = Buffer.from(JSON.stringify(contextData)).toString("base64url");
+    // ✅ FIXED: Changed from /api/messenger-redirect to /messenger-redirect
+    const contextualMessengerLink = `${DOMAIN_URL}/messenger-redirect?context=${encodedContext}`;
 
-    // Generate direct m.me link with ref parameter
-    const PAGE_USERNAME = process.env.FACEBOOK_PAGE_USERNAME || "698738296664477";
-    const messengerLink = `https://m.me/${PAGE_USERNAME}?ref=${encodedContext}`;
-
-    console.log(`🔗 Generated messenger link: ${messengerLink}`);
-    console.log(`📦 Context data:`, contextData);
-    
-    return messengerLink;
+    console.log(`🔗 Generated messenger link: ${contextualMessengerLink}`);
+    return contextualMessengerLink;
   } catch (error) {
     console.error("❌ Error generating messenger link:", error);
     return null;
   }
 }
+
 // Format job post content with messenger link included
 async function formatJobPost(job, jobPostId) {
   const {
