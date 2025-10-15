@@ -132,9 +132,10 @@ async function isPageLikelyRecovered(page) {
   }
 }
 
-// Generate messenger link for job application - FIXED VERSION
+// Generate messenger link for job application - MATCHES WEBHOOK FORMAT
 async function generateMessengerLink(jobData, jobPostId) {
   try {
+    // Use FULL field names (not abbreviated) to match webhook expectations
     const contextData = {
       jobPostId,
       jobTitle: jobData.title,
@@ -143,27 +144,29 @@ async function generateMessengerLink(jobData, jobPostId) {
       requirements: jobData.requirements,
       description: jobData.description,
       jobType: jobData.jobType,
-      experience: jobData.experiance,
+      experience: jobData.experiance, // Keep your spelling
       salaryRange: jobData.salaryRange,
       responsibilities: jobData.responsibilities || [],
       perks: jobData.perks,
       timestamp: Date.now(),
     };
 
-    // ✅ FIXED: Use Railway URL from environment variable or fallback to your Railway domain
-    const DOMAIN_URL = process.env.RAILWAY_URL || "https://fbauto-production-4368.up.railway.app";
+    // Use base64url encoding to match your webhook (safer for URLs)
     const encodedContext = Buffer.from(JSON.stringify(contextData)).toString("base64url");
-    // ✅ FIXED: Changed from /api/messenger-redirect to /messenger-redirect
-    const contextualMessengerLink = `${DOMAIN_URL}/messenger-redirect?context=${encodedContext}`;
 
-    console.log(`🔗 Generated messenger link: ${contextualMessengerLink}`);
-    return contextualMessengerLink;
+    // Generate direct m.me link with ref parameter
+    const PAGE_USERNAME = process.env.FACEBOOK_PAGE_USERNAME || "698738296664477";
+    const messengerLink = `https://m.me/${PAGE_USERNAME}?ref=${encodedContext}`;
+
+    console.log(`🔗 Generated messenger link: ${messengerLink}`);
+    console.log(`📦 Context data:`, contextData);
+    
+    return messengerLink;
   } catch (error) {
     console.error("❌ Error generating messenger link:", error);
     return null;
   }
 }
-
 // Format job post content with messenger link included
 async function formatJobPost(job, jobPostId) {
   const {
@@ -781,11 +784,9 @@ export async function runJobPostAutomation(credentials, jobData = null) {
 
     console.log(`📋 Job: ${jobData.title} at ${jobData.company}`);
 
-  browser = await initializeJobPostBrowser();
-
-  // Remove global context usage: create a new context per post
-  // context = await getJobPostContextForUser(browser, credentials.email || "default");
-  // page = await context.newPage();
+    browser = await initializeJobPostBrowser();
+    context = await getJobPostContextForUser(browser, credentials.email || "default");
+    page = await context.newPage();
 
     console.log("🔑 Logging in...");
     await ensureLoggedIn({ page, context, credentials });
@@ -798,17 +799,7 @@ export async function runJobPostAutomation(credentials, jobData = null) {
 
     // Post to each group with crash recovery
     for (const groupUrl of facebookGroups) {
-      let context = null;
-      let page = null;
       try {
-        // Create a new context and page for each post
-        context = await browser.newContext({
-          userAgent:
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          viewport: { width: 1366, height: 768 },
-        });
-        page = await context.newPage();
-
         const jobPost = await prisma.jobPost.create({
           data: { jobId: jobData.id, facebookGroupUrl: groupUrl, status: "POSTING" },
         });
@@ -835,11 +826,6 @@ export async function runJobPostAutomation(credentials, jobData = null) {
           messengerLinkInPost: false,
           testType: "FULL_JOB_POSTING_WITH_INLINE_MESSENGER_LINK" 
         });
-      } finally {
-        // Always close the context after each post
-        if (context) {
-          await context.close().catch(() => {});
-        }
       }
     }
 
