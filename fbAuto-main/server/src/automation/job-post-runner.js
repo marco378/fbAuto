@@ -1,9 +1,8 @@
 // src/automation/job-post-runner-enhanced.js
 import { chromium } from "playwright";
 import { ensureLoggedIn } from "./facebook-login.js";
-import { humanPause } from "../../src/automation/utils/delays.js";
-import { prisma } from "../lib/prisma.js";
-import path from "path";
+import { humanPause } from "./utils/delays.js";
+import { prisma } from "../../server/src/lib/prisma.js";
 
 // Store browser context globally for job posting
 let jobPostBrowser = null;
@@ -12,50 +11,13 @@ let currentJobUser = null;
 
 // MINIMAL browser configuration - remove all potentially problematic flags
 const getJobPostBrowserConfig = () => ({
-  headless: process.env.NODE_ENV === 'production' && process.env.MANUAL_2FA !== 'true' && process.env.HEADLESS !== 'false',
+  headless: false,
   args: [
     "--no-sandbox",
     "--disable-dev-shm-usage",
     "--disable-blink-features=AutomationControlled",
     "--no-first-run",
     "--disable-infobars",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-renderer-backgrounding",
-    "--disable-features=TranslateUI",
-    "--disable-ipc-flooding-protection",
-    "--memory-pressure-off",
-    "--max_old_space_size=2048",
-    "--disable-web-security",
-    "--disable-features=VizDisplayCompositor",
-    "--disable-breakpad",
-  // removed extension-related flag
-    "--disable-default-apps",
-    "--disable-sync",
-    "--metrics-recording-only",
-    "--no-first-run",
-    "--safebrowsing-disable-auto-update",
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-domain-reliability",
-    "--disable-features=AudioServiceOutOfProcess",
-    "--disable-features=Translate",
-    "--disable-hang-monitor",
-    "--disable-logging",
-    "--disable-popup-blocking",
-    "--disable-prompt-on-repost",
-    "--disable-renderer-backgrounding",
-    "--disable-sync",
-    "--force-color-profile=srgb",
-    "--no-default-browser-check",
-    "--no-pings",
-    "--password-store=basic",
-    "--use-mock-keychain",
-    "--single-process",
-    // Add flags to appear more like a regular browser
-    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "--accept-lang=en-US,en;q=0.9",
-    "--window-size=1366,768",
   ],
 });
 
@@ -75,7 +37,9 @@ async function initializeJobPostBrowser() {
 
       jobPostBrowser.on("disconnected", () => {
         console.log("🔌 Browser disconnected - cleaning up");
-  // removed extension-related flags
+        jobPostBrowser = null;
+        jobPostContext = null;
+        currentJobUser = null;
       });
     }
 
@@ -89,7 +53,7 @@ async function initializeJobPostBrowser() {
   }
 }
 
-// MINIMAL context creation with persistent storage to reduce 2FA
+// MINIMAL context creation
 async function getJobPostContextForUser(browser, userEmail) {
   try {
     if (jobPostContext && currentJobUser !== userEmail) {
@@ -100,97 +64,56 @@ async function getJobPostContextForUser(browser, userEmail) {
 
     if (!jobPostContext) {
       console.log(`🌍 Creating minimal context for: ${userEmail}`);
-      
-      // Use persistent context to maintain login state and reduce 2FA triggers
-      const userDataDir = path.join(process.cwd(), '.browser-data', userEmail.replace('@', '_').replace(/\./g, '_'));
-      
-      try {
-        // Try creating persistent context first to maintain session state
-        // Use a consistent user data directory that persists across restarts
-        const persistentDir = path.join('/tmp', 'fb-persistent', userEmail.replace('@', '_').replace(/\./g, '_'));
-        
-        jobPostContext = await chromium.launchPersistentContext(persistentDir, {
-          headless: process.env.NODE_ENV === 'production' && process.env.MANUAL_2FA !== 'true' && process.env.HEADLESS !== 'false',
-          args: [
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-blink-features=AutomationControlled",
-            "--no-first-run",
-            "--disable-infobars",
-            "--disable-web-security",
-            "--disable-features=VizDisplayCompositor",
-            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "--window-size=1366,768",
-            // Additional session persistence flags
-            "--enable-automation=false",
-            "--disable-features=AutomationControlled",
-            "--exclude-switches=enable-automation",
-            "--disable-client-side-phishing-detection",
-            // removed extension-related flags
-          ],
-          viewport: { width: 1280, height: 720 }, // Desktop dimensions
-          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          locale: "en-US",
-          timezoneId: "America/New_York",
-          geolocation: { latitude: 40.7128, longitude: -74.0060 },
-          permissions: ['geolocation'],
-          extraHTTPHeaders: {
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-            'Sec-Ch-Ua-Mobile': '?0', // Desktop indicator
-            'Sec-Ch-Ua-Platform': '"Windows"', // Windows platform
-          },
-          // Critical: Enable storage persistence
-          storageState: undefined, // Let it manage state automatically
-        });
-        console.log("✅ Using persistent context with enhanced session management");
-      } catch (persistentError) {
-        console.log("⚠️ Fallback to regular context:", persistentError.message);
-        // Fallback to regular context if persistent fails
-        jobPostContext = await browser.newContext({
-          viewport: { width: 1280, height: 720 }, // Desktop dimensions
-          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          locale: "en-US",
-          timezoneId: "America/New_York",
-          extraHTTPHeaders: {
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-          }
-        });
-      }
+      jobPostContext = await browser.newContext({
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        viewport: { width: 1366, height: 768 },
+      });
 
       currentJobUser = userEmail;
+
+      jobPostContext.on("close", () => {
+        console.log("🔌 Context closed");
+        jobPostContext = null;
+        currentJobUser = null;
+      });
     }
 
     return jobPostContext;
   } catch (error) {
-    console.error("❌ Failed to create context:", error);
+    console.error("❌ Failed to get context:", error);
     throw error;
   }
 }
 
 // Navigation with retries
 async function navigateToGroupSafely(page, groupUrl, maxRetries = 3) {
-  try {
-    console.log(`🔗 Navigating to group: ${groupUrl}`);
-    if (page.isClosed()) {
-      throw new Error("Page is closed");
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔗 Navigation attempt ${attempt}/${maxRetries} to group...`);
+
+      if (page.isClosed()) {
+        throw new Error("Page is closed");
+      }
+
+      await page.goto(groupUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+
+      console.log("✅ Navigation successful");
+      return true;
+    } catch (error) {
+      console.error(`❌ Navigation attempt ${attempt} failed: ${error.message}`);
+
+      if (attempt < maxRetries) {
+        console.log(`⏳ Waiting before retry...`);
+        await humanPause(5000);
+      }
     }
-    await page.goto(groupUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
-    console.log("✅ Navigation successful");
-    return true;
-  } catch (error) {
-    console.error(`❌ Navigation failed: ${error.message}`);
-    throw error;
   }
+
+  throw new Error("All navigation attempts failed");
 }
 
 // Helper to check if the page appears recovered
@@ -209,7 +132,7 @@ async function isPageLikelyRecovered(page) {
   }
 }
 
-// Generate messenger link for job application
+// Generate messenger link for job application - FIXED VERSION
 async function generateMessengerLink(jobData, jobPostId) {
   try {
     const contextData = {
@@ -227,10 +150,13 @@ async function generateMessengerLink(jobData, jobPostId) {
       timestamp: Date.now(),
     };
 
-    const DOMAIN_URL = process.env.DOMAIN_URL || "http://localhost:5000";
+    // ✅ FIXED: Use Railway URL from environment variable or fallback to your Railway domain
+    const DOMAIN_URL = process.env.RAILWAY_URL || "https://fbauto-production-4368.up.railway.app";
     const encodedContext = Buffer.from(JSON.stringify(contextData)).toString("base64url");
-    const contextualMessengerLink = `${DOMAIN_URL}/api/messenger-redirect?context=${encodedContext}`;
+    // ✅ FIXED: Changed from /api/messenger-redirect to /messenger-redirect
+    const contextualMessengerLink = `${DOMAIN_URL}/messenger-redirect?context=${encodedContext}`;
 
+    console.log(`🔗 Generated messenger link: ${contextualMessengerLink}`);
     return contextualMessengerLink;
   } catch (error) {
     console.error("❌ Error generating messenger link:", error);
@@ -291,7 +217,7 @@ async function formatJobPost(job, jobPostId) {
   return postContent;
 }
 
-// Generate self-reply message (kept for backward compatibility)
+// Generate self-reply message - FIXED VERSION
 async function generateSelfReplyMessage(jobData, jobPostId) {
   try {
     const contextData = {
@@ -309,9 +235,11 @@ async function generateSelfReplyMessage(jobData, jobPostId) {
       timestamp: Date.now(),
     };
 
-    const DOMAIN_URL = process.env.DOMAIN_URL || "http://localhost:5000";
+    // ✅ FIXED: Use Railway URL from environment variable or fallback to your Railway domain
+    const DOMAIN_URL = process.env.RAILWAY_URL || "https://fbauto-production-4368.up.railway.app";
     const encodedContext = Buffer.from(JSON.stringify(contextData)).toString("base64url");
-    const contextualMessengerLink = `${DOMAIN_URL}/api/messenger-redirect?context=${encodedContext}`;
+    // ✅ FIXED: Changed from /api/messenger-redirect to /messenger-redirect
+    const contextualMessengerLink = `${DOMAIN_URL}/messenger-redirect?context=${encodedContext}`;
 
     const messages = [
       `📩 Interested candidates, message me here: ${contextualMessengerLink}`,
@@ -360,57 +288,8 @@ async function createGroupPost(page, jobContent) {
 
     console.log("🔍 Looking for 'Write something...' button...");
 
-    // First, let's debug the current page state
-    const currentUrl = page.url();
-    const pageTitle = await page.title();
-    console.log(`🌐 Current URL: ${currentUrl}`);
-    console.log(`📄 Page title: ${pageTitle}`);
-    
-    // Check if we're actually on a Facebook group page
-    if (!currentUrl.includes('facebook.com/groups/')) {
-      console.log(`❌ Not on a Facebook group page! Current URL: ${currentUrl}`);
-      throw new Error(`Expected to be on a Facebook group page, but currently on: ${currentUrl}`);
-    }
-    
-    // Check for common login/challenge indicators
-    const pageContent = await page.content();
-    const contentLower = pageContent.toLowerCase();
-    
-
-    
-    if (contentLower.includes('checkpoint') || contentLower.includes('security check') || contentLower.includes('verify your identity')) {
-      console.log("❌ Stuck on security checkpoint");
-      throw new Error("Stuck on Facebook security checkpoint");
-    }
-    
-    if (contentLower.includes('two-factor') || contentLower.includes('2fa') || contentLower.includes('authentication code')) {
-      console.log("❌ Stuck on 2FA page");
-      throw new Error("Stuck on 2FA authentication page");
-    }
-    
-    // Check if group posting is restricted
-    if (contentLower.includes("you can't post") || contentLower.includes("posting restricted") || contentLower.includes("unable to post")) {
-      console.log("❌ Group posting is restricted");
-      throw new Error("This group doesn't allow posting or posting is restricted");
-    }
-    
-    console.log("✅ Page appears to be a valid Facebook group page");
-    console.log("🔍 Searching for post creation elements...");
-
-    // Take a screenshot for debugging
-    try {
-      await page.screenshot({ 
-        path: `/tmp/facebook-debug-${Date.now()}.png`,
-        fullPage: true 
-      });
-      console.log("📸 Debug screenshot saved to /tmp/");
-    } catch (screenshotError) {
-      console.log("⚠️ Could not save debug screenshot:", screenshotError.message);
-    }
-
     // Comprehensive selector list
     const writeButtonSelectors = [
-      // Traditional "Write something..." selectors
       'span:has-text("Write something...")',
       'div[role="button"]:has-text("Write something...")',
       '[aria-label="Write something..."]',
@@ -420,44 +299,6 @@ async function createGroupPost(page, jobContent) {
       '[placeholder="Write something..."]',
       'span:text-is("Write something...")',
       '*:has-text("Write something...")',
-      
-      // New Facebook interface selectors
-      '[aria-label="Create a post"]',
-      '[data-testid="post-composer-input"]',
-      '[data-testid="post-creation-composer"]',
-      'div[role="button"]:has-text("What\'s on your mind")',
-      'div[role="button"]:has-text("Create post")',
-      'div[role="button"]:has-text("Share something")',
-      'div[role="button"]:has-text("Create a post")',
-      
-      // Mobile-specific selectors
-      '[aria-label="What\'s on your mind?"]',
-      'div[role="textbox"][contenteditable="true"]',
-      '[data-testid="composer-input"]',
-      'textarea[placeholder="What\'s on your mind?"]',
-      'div[data-testid="status-attachment-mentions-input"]',
-      
-      // Alternative text variations
-      'span:has-text("What\'s on your mind")',
-      'div:has-text("Start a discussion")',
-      'div:has-text("Share an update")',
-      'div:has-text("Post something")',
-      
-      // Generic post creation elements
-      '[role="button"][aria-label*="post"]',
-      '[role="button"][aria-label*="share"]',
-      '[role="button"][aria-label*="write"]',
-      'div[contenteditable="true"][role="textbox"]',
-      
-      // Group-specific selectors
-      'div[aria-label*="group"]',
-      '[data-testid="group-post-composer"]',
-      
-      // Fallback selectors
-      'div[role="button"]:visible',
-      'span:visible:contains("Write")',
-      'span:visible:contains("Share")',
-      'span:visible:contains("Post")',
     ];
 
     let writeButton = null;
@@ -488,92 +329,15 @@ async function createGroupPost(page, jobContent) {
     // Aggressive search if needed
     if (!writeButton) {
       console.log("🔍 Trying aggressive search for write button...");
-      
-      // Method 1: XPath search for text content
       try {
-        const xpathSelectors = [
-          `xpath=//*[contains(text(), "Write something")]`,
-          `xpath=//*[contains(text(), "What's on your mind")]`,
-          `xpath=//*[contains(text(), "Share something")]`,
-          `xpath=//*[contains(text(), "Create post")]`,
-          `xpath=//*[contains(text(), "Start a discussion")]`,
-        ];
-        
-        for (const xpath of xpathSelectors) {
-          try {
-            writeButton = page.locator(xpath).first();
-            if (await writeButton.isVisible({ timeout: 2000 })) {
-              console.log(`✅ Found write button using XPath: ${xpath}`);
-              break;
-            } else {
-              writeButton = null;
-            }
-          } catch (err) {
-            continue;
-          }
+        writeButton = page.locator(`xpath=//*[contains(text(), "Write something")]`).first();
+        if (await writeButton.isVisible({ timeout: 2000 })) {
+          console.log("✅ Found write button using aggressive search");
+        } else {
+          writeButton = null;
         }
       } catch (error) {
-        console.log("❌ XPath search failed:", error.message);
-      }
-      
-      // Method 2: Search for elements by role and try clicking them
-      if (!writeButton) {
-        console.log("🔍 Searching for clickable elements that might open composer...");
-        try {
-          const clickableElements = await page.locator('[role="button"]:visible').all();
-          console.log(`Found ${clickableElements.length} clickable elements`);
-          
-          for (let i = 0; i < Math.min(clickableElements.length, 10); i++) {
-            try {
-              const element = clickableElements[i];
-              const text = await element.textContent().catch(() => '');
-              const ariaLabel = await element.getAttribute('aria-label').catch(() => '');
-              
-              console.log(`🔍 Checking element ${i}: text="${text}", aria-label="${ariaLabel}"`);
-              
-              // Check if text/aria-label contains post-related keywords
-              const combined = (text + ' ' + ariaLabel).toLowerCase();
-              if (combined.includes('write') || combined.includes('post') || combined.includes('share') || 
-                  combined.includes('create') || combined.includes('mind') || combined.includes('discuss')) {
-                writeButton = element;
-                console.log(`✅ Found potential write button: "${text || ariaLabel}"`);
-                break;
-              }
-            } catch (err) {
-              continue;
-            }
-          }
-        } catch (error) {
-          console.log("❌ Element search failed:", error.message);
-        }
-      }
-      
-      // Method 3: Look for any input-like elements
-      if (!writeButton) {
-        console.log("🔍 Looking for any input-like elements...");
-        try {
-          const inputSelectors = [
-            'input[type="text"]:visible',
-            'textarea:visible',
-            'div[contenteditable="true"]:visible',
-            '[role="textbox"]:visible',
-          ];
-          
-          for (const selector of inputSelectors) {
-            try {
-              const element = page.locator(selector).first();
-              if (await element.isVisible({ timeout: 1000 })) {
-                writeButton = element;
-                console.log(`✅ Found input element: ${selector}`);
-                break;
-              }
-            } catch (err) {
-              continue;
-            }
-          }
-        } catch (error) {
-          console.log("❌ Input search failed:", error.message);
-        }
+        console.log("❌ Aggressive search failed:", error.message);
       }
     }
 
@@ -640,7 +404,7 @@ async function createGroupPost(page, jobContent) {
     await humanPause(500, 1000);
 
     console.log("⌨️ Typing message with keyboard...");
-      await page.keyboard.type(jobContent, { delay: 0 });
+    await page.keyboard.type(jobContent, { delay: 100 });
     await humanPause(2000, 3000);
 
     // Verify content was typed
@@ -715,9 +479,9 @@ async function createGroupPost(page, jobContent) {
     try {
       const modalGone = await page
         .waitForSelector('[role="dialog"]', {
-            state: "detached",
-            timeout: 100,
-          })
+          state: "detached",
+          timeout: 10000,
+        })
         .then(() => true)
         .catch(() => false);
 
@@ -748,7 +512,8 @@ async function createGroupPost(page, jobContent) {
       return true;
     }
   } catch (error) {
-  // Removed: fail log and throw for job post creation
+    console.error("❌ Failed to create job post:", error.message);
+    throw error;
   }
 }
 
@@ -967,11 +732,12 @@ async function postJobWithCrashRecovery(page, groupUrl, jobContent, jobData, job
           reloadMethod: "NEW_PAGE",
         };
       } catch (npErr) {
-  // Removed: fail log and throw for new page recovery
+        console.error("❌ New page recovery failed:", npErr.message);
+        throw new Error(`Crash recovery failed: ${npErr.message}`);
       }
     }
   } catch (error) {
-  // Removed: fail log for job posting failed
+    console.error(`❌ Job posting failed: ${error.message}`);
 
     await prisma.jobPost.update({
       where: { id: jobPostId },
@@ -1011,19 +777,6 @@ export async function runJobPostAutomation(credentials, jobData = null) {
       });
 
       if (!jobData) throw new Error("No active jobs found");
-    } else {
-      // Validate that the provided jobData exists in the database
-      const existingJob = await prisma.job.findUnique({
-        where: { id: jobData.id },
-        include: { posts: true },
-      });
-      
-      if (!existingJob) {
-        throw new Error(`Job with ID ${jobData.id} not found in database`);
-      }
-      
-      // Use the fresh data from database to ensure consistency
-      jobData = existingJob;
     }
 
     console.log(`📋 Job: ${jobData.title} at ${jobData.company}`);
@@ -1034,12 +787,6 @@ export async function runJobPostAutomation(credentials, jobData = null) {
 
     console.log("🔑 Logging in...");
     await ensureLoggedIn({ page, context, credentials });
-    
-    // Add stability delay after login in production
-    if (process.env.NODE_ENV === 'production') {
-      console.log("⏱️ Stabilizing browser after login (production mode)...");
-      await humanPause(1000, 1100);
-    }
 
     const { facebookGroups } = jobData;
 
