@@ -781,9 +781,11 @@ export async function runJobPostAutomation(credentials, jobData = null) {
 
     console.log(`📋 Job: ${jobData.title} at ${jobData.company}`);
 
-    browser = await initializeJobPostBrowser();
-    context = await getJobPostContextForUser(browser, credentials.email || "default");
-    page = await context.newPage();
+  browser = await initializeJobPostBrowser();
+
+  // Remove global context usage: create a new context per post
+  // context = await getJobPostContextForUser(browser, credentials.email || "default");
+  // page = await context.newPage();
 
     console.log("🔑 Logging in...");
     await ensureLoggedIn({ page, context, credentials });
@@ -796,7 +798,17 @@ export async function runJobPostAutomation(credentials, jobData = null) {
 
     // Post to each group with crash recovery
     for (const groupUrl of facebookGroups) {
+      let context = null;
+      let page = null;
       try {
+        // Create a new context and page for each post
+        context = await browser.newContext({
+          userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          viewport: { width: 1366, height: 768 },
+        });
+        page = await context.newPage();
+
         const jobPost = await prisma.jobPost.create({
           data: { jobId: jobData.id, facebookGroupUrl: groupUrl, status: "POSTING" },
         });
@@ -823,6 +835,11 @@ export async function runJobPostAutomation(credentials, jobData = null) {
           messengerLinkInPost: false,
           testType: "FULL_JOB_POSTING_WITH_INLINE_MESSENGER_LINK" 
         });
+      } finally {
+        // Always close the context after each post
+        if (context) {
+          await context.close().catch(() => {});
+        }
       }
     }
 

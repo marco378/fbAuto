@@ -1,5 +1,9 @@
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
 const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'https://prudvi.app.n8n.cloud/webhook-test/webhook-test';
-const VERIFY_TOKEN = process.env.FACEBOOK_VERIFY_TOKEN || 'EAAUNrA8WQrUBPc75RtQwhCQiZAgmG8yHhmJdT6CVluVcS7JK2BVnntUFtyAq9DUYMx2ScZCl4FVYr2PxbVfZAvM4TZBlJPo49YNmrPKI9SVjSCFk28Wsdzp0ZCry5BPuOxuV4EPYOuZCrvmz9V99NkqbEXhPWZBDhGDbfMVPGAUNuHkWMgbP7d52gxj1RVEZCcyBMxjX2gZDZD'
+const VERIFY_TOKEN = process.env.FACEBOOK_VERIFY_TOKEN || 'EAAUNrA8WQrUBPc75RtQwhCQiZAgmG8yHhmJdT6CVluVcS7JK2BVnntUFtyAq9DUYMx2ScZCl4FVYr2PxbVfZAvM4TZBlJPo49YNmrPKI9SVjSCFk28Wsdzp0ZCry5BPuOxuV4EPYOuZCrvmz9V99NkqbEXhPWZBDhGDbfMVPGAUNuHkWMgbP7d52gxj1RVEZCcyBMxjX2gZDZD';
 
 export const handleMessengerWebhook = async (req, res) => {
   console.log('📥 Received webhook:', JSON.stringify(req.body, null, 2));
@@ -56,11 +60,15 @@ async function handleReferral(referral, senderId) {
     const refData = JSON.parse(Buffer.from(referral.ref, 'base64url').toString());
     console.log('🔍 Decoded ref data:', refData);
 
+    // Store job context in database
+    await storeJobContext(senderId, refData);
+
     const payload = {
       type: 'messenger_referral',
       timestamp: new Date().toISOString(),
       senderId,
       jobContext: refData,
+      isFirstMessage: true, // Flag for n8n to store full context
       rawReferral: referral,
       source: 'facebook_messenger'
     };
@@ -101,19 +109,28 @@ async function handleMessage(event, senderId) {
   
   // Check if this is the FIRST message and has referral data
   let jobContext = null;
+  let isFirstMessage = false;
+
   if (event.message.referral && event.message.referral.ref) {
     console.log('🎯 First message with referral data!');
     try {
       const decodedRef = JSON.parse(Buffer.from(event.message.referral.ref, 'base64url').toString());
-      jobContext = {
-        jobPostId: decodedRef.jid,
-        jobTitle: decodedRef.jt,
-        company: decodedRef.c,
-        timestamp: decodedRef.ts
-      };
+      jobContext = decodedRef;
+      isFirstMessage = true;
+      
+      // Store in database
+      await storeJobContext(senderId, decodedRef);
       console.log('✅ Job context from message:', jobContext);
     } catch (error) {
       console.error('❌ Failed to decode message referral:', error);
+    }
+  } else {
+    // Lookup existing job context from database
+    jobContext = await getJobContext(senderId);
+    if (jobContext) {
+      console.log('✅ Retrieved job context from DB:', jobContext);
+    } else {
+      console.log('⚠️ No job context found for sender');
     }
   }
   
@@ -125,7 +142,8 @@ async function handleMessage(event, senderId) {
       text: event.message.text || '',
       attachments: event.message.attachments || []
     },
-    jobContext: jobContext, // Include job context if available
+    jobContext: jobContext,
+    isFirstMessage: isFirstMessage, // Flag for n8n
     source: 'facebook_messenger_message'
   };
   
@@ -140,19 +158,26 @@ async function handlePostback(event, senderId) {
   
   // Check if this postback also has referral data (first interaction)
   let jobContext = null;
+  let isFirstMessage = false;
+
   if (event.postback.referral && event.postback.referral.ref) {
     console.log('🎯 Postback with referral data!');
     try {
       const decodedRef = JSON.parse(Buffer.from(event.postback.referral.ref, 'base64url').toString());
-      jobContext = {
-        jobPostId: decodedRef.jid,
-        jobTitle: decodedRef.jt,
-        company: decodedRef.c,
-        timestamp: decodedRef.ts
-      };
+      jobContext = decodedRef;
+      isFirstMessage = true;
+
+      // Store in database
+      await storeJobContext(senderId, decodedRef);
       console.log('✅ Job context from postback:', jobContext);
     } catch (error) {
       console.error('❌ Failed to decode postback referral:', error);
+    }
+  } else {
+    // Lookup existing job context from database
+    jobContext = await getJobContext(senderId);
+    if (jobContext) {
+      console.log('✅ Retrieved job context from DB:', jobContext);
     }
   }
   
@@ -165,6 +190,7 @@ async function handlePostback(event, senderId) {
       payload: event.postback.payload
     },
     jobContext: jobContext,
+    isFirstMessage: isFirstMessage,
     source: 'facebook_messenger_postback'
   };
   
@@ -172,4 +198,54 @@ async function handlePostback(event, senderId) {
   console.log('📤 Postback data sent to N8N');
 }
 
-// Simple function to send data to N8N
+// Store job context in database
+async function storeJobContext(senderId, refData) {
+  try {
+    await prisma.jobContextSession.upsert({
+      where: { senderId },
+      update: {
+        jobPostId: refData.jobPostId,
+        jobTitle: refData.jobTitle,
+        company: refData.company,
+        lastMessageAt: new Date()
+      },
+      create: {
+        senderId,
+        jobPostId: refData.jobPostId,
+        jobTitle: refData.jobTitle,
+        company: refData.company,
+        lastMessageAt: new Date()
+      }
+    });
+    console.log('✅ Stored job context in database for sender:', senderId);
+  } catch (error) {
+    console.error('❌ Error storing job context:', error);
+  }
+}
+
+// Get job context from database
+async function getJobContext(senderId) {
+  try {
+    const session = await prisma.jobContextSession.findUnique({
+      where: { senderId }
+    });
+
+    if (session) {
+      // Update last message timestamp
+      await prisma.jobContextSession.update({
+        where: { senderId },
+        data: { lastMessageAt: new Date() }
+      });
+
+      return {
+        jobPostId: session.jobPostId,
+        jobTitle: session.jobTitle,
+        company: session.company
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('❌ Error retrieving job context:', error);
+    return null;
+  }
+}
