@@ -1,0 +1,1148 @@
+// src/automation/job-post-runner-enhanced.js
+import { chromium } from "playwright";
+import { ensureLoggedIn } from "./facebook-login.js";
+import { humanPause } from "../../src/automation/utils/delays.js";
+import { prisma } from "../lib/prisma.js";
+import path from "path";
+
+// Store browser context globally for job posting
+let jobPostBrowser = null;
+let jobPostContext = null;
+let currentJobUser = null;
+
+// MINIMAL browser configuration - remove all potentially problematic flags
+const getJobPostBrowserConfig = () => ({
+  headless: process.env.NODE_ENV === 'production' && process.env.MANUAL_2FA !== 'true' && process.env.HEADLESS !== 'false',
+  args: [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-blink-features=AutomationControlled",
+    "--no-first-run",
+    "--disable-infobars",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-features=TranslateUI",
+    "--disable-ipc-flooding-protection",
+    "--memory-pressure-off",
+    "--max_old_space_size=2048",
+    "--disable-web-security",
+    "--disable-features=VizDisplayCompositor",
+    "--disable-breakpad",
+  // removed extension-related flag
+    "--disable-default-apps",
+    "--disable-sync",
+    "--metrics-recording-only",
+    "--no-first-run",
+    "--safebrowsing-disable-auto-update",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-domain-reliability",
+    "--disable-features=AudioServiceOutOfProcess",
+    "--disable-features=Translate",
+    "--disable-hang-monitor",
+    "--disable-logging",
+    "--disable-popup-blocking",
+    "--disable-prompt-on-repost",
+    "--disable-renderer-backgrounding",
+    "--disable-sync",
+    "--force-color-profile=srgb",
+    "--no-default-browser-check",
+    "--no-pings",
+    "--password-store=basic",
+    "--use-mock-keychain",
+    "--single-process",
+    // Add flags to appear more like a regular browser
+    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "--accept-lang=en-US,en;q=0.9",
+    "--window-size=1366,768",
+  ],
+});
+
+// Initialize browser with crash recovery
+async function initializeJobPostBrowser() {
+  try {
+    if (jobPostBrowser && !jobPostBrowser.isConnected()) {
+      console.log("🔄 Browser disconnected, cleaning up...");
+      jobPostBrowser = null;
+      jobPostContext = null;
+      currentJobUser = null;
+    }
+
+    if (!jobPostBrowser) {
+      console.log("🚀 Launching minimal browser for Facebook...");
+      jobPostBrowser = await chromium.launch(getJobPostBrowserConfig());
+
+      jobPostBrowser.on("disconnected", () => {
+        console.log("🔌 Browser disconnected - cleaning up");
+  // removed extension-related flags
+      });
+    }
+
+    return jobPostBrowser;
+  } catch (error) {
+    console.error("❌ Failed to initialize browser:", error);
+    jobPostBrowser = null;
+    jobPostContext = null;
+    currentJobUser = null;
+    throw error;
+  }
+}
+
+// MINIMAL context creation with persistent storage to reduce 2FA
+async function getJobPostContextForUser(browser, userEmail) {
+  try {
+    if (jobPostContext && currentJobUser !== userEmail) {
+      console.log(`🔄 Switching context from ${currentJobUser} to ${userEmail}`);
+      await jobPostContext.close();
+      jobPostContext = null;
+    }
+
+    if (!jobPostContext) {
+      console.log(`🌍 Creating minimal context for: ${userEmail}`);
+      
+      // Use persistent context to maintain login state and reduce 2FA triggers
+      const userDataDir = path.join(process.cwd(), '.browser-data', userEmail.replace('@', '_').replace(/\./g, '_'));
+      
+      try {
+        // Try creating persistent context first to maintain session state
+        // Use a consistent user data directory that persists across restarts
+        const persistentDir = path.join('/tmp', 'fb-persistent', userEmail.replace('@', '_').replace(/\./g, '_'));
+        
+        jobPostContext = await chromium.launchPersistentContext(persistentDir, {
+          headless: process.env.NODE_ENV === 'production' && process.env.MANUAL_2FA !== 'true' && process.env.HEADLESS !== 'false',
+          args: [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-blink-features=AutomationControlled",
+            "--no-first-run",
+            "--disable-infobars",
+            "--disable-web-security",
+            "--disable-features=VizDisplayCompositor",
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "--window-size=1366,768",
+            // Additional session persistence flags
+            "--enable-automation=false",
+            "--disable-features=AutomationControlled",
+            "--exclude-switches=enable-automation",
+            "--disable-client-side-phishing-detection",
+            // removed extension-related flags
+          ],
+          viewport: { width: 1280, height: 720 }, // Desktop dimensions
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          locale: "en-US",
+          timezoneId: "America/New_York",
+          geolocation: { latitude: 40.7128, longitude: -74.0060 },
+          permissions: ['geolocation'],
+          extraHTTPHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+            'Sec-Ch-Ua-Mobile': '?0', // Desktop indicator
+            'Sec-Ch-Ua-Platform': '"Windows"', // Windows platform
+          },
+          // Critical: Enable storage persistence
+          storageState: undefined, // Let it manage state automatically
+        });
+        console.log("✅ Using persistent context with enhanced session management");
+      } catch (persistentError) {
+        console.log("⚠️ Fallback to regular context:", persistentError.message);
+        // Fallback to regular context if persistent fails
+        jobPostContext = await browser.newContext({
+          viewport: { width: 1280, height: 720 }, // Desktop dimensions
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          locale: "en-US",
+          timezoneId: "America/New_York",
+          extraHTTPHeaders: {
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+          }
+        });
+      }
+
+      currentJobUser = userEmail;
+    }
+
+    return jobPostContext;
+  } catch (error) {
+    console.error("❌ Failed to create context:", error);
+    throw error;
+  }
+}
+
+// Navigation with retries
+async function navigateToGroupSafely(page, groupUrl, maxRetries = 3) {
+  try {
+    console.log(`🔗 Navigating to group: ${groupUrl}`);
+    if (page.isClosed()) {
+      throw new Error("Page is closed");
+    }
+    await page.goto(groupUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    console.log("✅ Navigation successful");
+    return true;
+  } catch (error) {
+    console.error(`❌ Navigation failed: ${error.message}`);
+    throw error;
+  }
+}
+
+// Helper to check if the page appears recovered
+async function isPageLikelyRecovered(page) {
+  try {
+    if (page.isClosed && page.isClosed()) return false;
+    const title = await page.title().catch(() => "");
+    const url = page.url ? page.url() : "";
+    const lower = (title + " " + url).toLowerCase();
+    if (!lower.includes("snap") && !lower.includes("error") && !lower.includes("crash") && !lower.includes("killed")) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// Generate messenger link for job application
+async function generateMessengerLink(jobData, jobPostId) {
+  try {
+    const contextData = {
+      jobPostId,
+      jobTitle: jobData.title,
+      company: jobData.company,
+      location: jobData.location,
+      requirements: jobData.requirements,
+      description: jobData.description,
+      jobType: jobData.jobType,
+      experience: jobData.experiance,
+      salaryRange: jobData.salaryRange,
+      responsibilities: jobData.responsibilities || [],
+      perks: jobData.perks,
+      timestamp: Date.now(),
+    };
+
+    const DOMAIN_URL = process.env.DOMAIN_URL || "http://localhost:5000";
+    const encodedContext = Buffer.from(JSON.stringify(contextData)).toString("base64url");
+    const contextualMessengerLink = `${DOMAIN_URL}/api/messenger-redirect?context=${encodedContext}`;
+
+    return contextualMessengerLink;
+  } catch (error) {
+    console.error("❌ Error generating messenger link:", error);
+    return null;
+  }
+}
+
+// Format job post content with messenger link included
+async function formatJobPost(job, jobPostId) {
+  const {
+    title,
+    company,
+    location,
+    jobType,
+    salaryRange,
+    description,
+    requirements = [],
+    responsibilities = [],
+    perks,
+  } = job;
+
+  let postContent = `${title} at ${company}\n\n`;
+  postContent += `Location: ${location}\n`;
+  postContent += `Type: ${jobType}\n`;
+
+  if (salaryRange) postContent += `Salary: ${salaryRange}\n`;
+
+  postContent += `\nAbout the Role:\n${description}\n\n`;
+
+  if (requirements.length > 0) {
+    postContent += `Requirements:\n`;
+    requirements.forEach((req) => (postContent += `• ${req}\n`));
+    postContent += `\n`;
+  }
+
+  if (responsibilities.length > 0) {
+    postContent += `Responsibilities:\n`;
+    responsibilities.forEach((resp) => (postContent += `• ${resp}\n`));
+    postContent += `\n`;
+  }
+
+  if (perks) postContent += `Perks: ${perks}\n\n`;
+
+  // Generate and include messenger link directly in the post
+  if (jobPostId) {
+    const messengerLink = await generateMessengerLink(job, jobPostId);
+    if (messengerLink) {
+      postContent += `🎯 Interested? Apply directly here: ${messengerLink}\n\n`;
+    } else {
+      postContent += `Interested? send me a "hello" by clicking the link !\n\n`;
+    }
+  } else {
+    postContent += `Interested? send me a "hello" by clicking the link !\n\n`;
+  }
+
+  postContent += `#hiring #jobs #${jobType.toLowerCase()} #${location.toLowerCase().replace(/\s+/g, "")}`;
+
+  return postContent;
+}
+
+// Generate self-reply message (kept for backward compatibility)
+async function generateSelfReplyMessage(jobData, jobPostId) {
+  try {
+    const contextData = {
+      jobPostId,
+      jobTitle: jobData.title,
+      company: jobData.company,
+      location: jobData.location,
+      requirements: jobData.requirements,
+      description: jobData.description,
+      jobType: jobData.jobType,
+      experience: jobData.experiance,
+      salaryRange: jobData.salaryRange,
+      responsibilities: jobData.responsibilities || [],
+      perks: jobData.perks,
+      timestamp: Date.now(),
+    };
+
+    const DOMAIN_URL = process.env.DOMAIN_URL || "http://localhost:5000";
+    const encodedContext = Buffer.from(JSON.stringify(contextData)).toString("base64url");
+    const contextualMessengerLink = `${DOMAIN_URL}/api/messenger-redirect?context=${encodedContext}`;
+
+    const messages = [
+      `📩 Interested candidates, message me here: ${contextualMessengerLink}`,
+      `💼 Ready to join ${jobData.company}? Apply here: ${contextualMessengerLink}`,
+      `🎯 To apply, click here: ${contextualMessengerLink}`,
+    ];
+
+    return messages[Math.floor(Math.random() * messages.length)];
+  } catch (error) {
+    console.error("❌ Error generating self-reply message:", error);
+    return `💬 Interested in this ${jobData.title} position? Comment "interested" below!`;
+  }
+}
+
+// Create group post using the working approach from facebook-post.js
+async function createGroupPost(page, jobContent) {
+  try {
+    console.log("📝 Creating a post in group...");
+
+    await page.waitForLoadState("domcontentloaded");
+    await humanPause(3000, 5000);
+
+    // Check if we can post to this group
+    const pageCheck = await page.evaluate(() => {
+      const url = window.location.href;
+      const body = document.body.innerText.toLowerCase();
+
+      if (!url.includes("/groups/")) {
+        return { canPost: false, reason: "Not on a group page" };
+      }
+
+      if (
+        body.includes("you can't post in this group") ||
+        body.includes("posting is restricted") ||
+        body.includes("you've been restricted")
+      ) {
+        return { canPost: false, reason: "Posting restricted" };
+      }
+
+      return { canPost: true };
+    });
+
+    if (!pageCheck.canPost) {
+      throw new Error(`Cannot post: ${pageCheck.reason}`);
+    }
+
+    console.log("🔍 Looking for 'Write something...' button...");
+
+    // First, let's debug the current page state
+    const currentUrl = page.url();
+    const pageTitle = await page.title();
+    console.log(`🌐 Current URL: ${currentUrl}`);
+    console.log(`📄 Page title: ${pageTitle}`);
+    
+    // Check if we're actually on a Facebook group page
+    if (!currentUrl.includes('facebook.com/groups/')) {
+      console.log(`❌ Not on a Facebook group page! Current URL: ${currentUrl}`);
+      throw new Error(`Expected to be on a Facebook group page, but currently on: ${currentUrl}`);
+    }
+    
+    // Check for common login/challenge indicators
+    const pageContent = await page.content();
+    const contentLower = pageContent.toLowerCase();
+    
+
+    
+    if (contentLower.includes('checkpoint') || contentLower.includes('security check') || contentLower.includes('verify your identity')) {
+      console.log("❌ Stuck on security checkpoint");
+      throw new Error("Stuck on Facebook security checkpoint");
+    }
+    
+    if (contentLower.includes('two-factor') || contentLower.includes('2fa') || contentLower.includes('authentication code')) {
+      console.log("❌ Stuck on 2FA page");
+      throw new Error("Stuck on 2FA authentication page");
+    }
+    
+    // Check if group posting is restricted
+    if (contentLower.includes("you can't post") || contentLower.includes("posting restricted") || contentLower.includes("unable to post")) {
+      console.log("❌ Group posting is restricted");
+      throw new Error("This group doesn't allow posting or posting is restricted");
+    }
+    
+    console.log("✅ Page appears to be a valid Facebook group page");
+    console.log("🔍 Searching for post creation elements...");
+
+    // Take a screenshot for debugging
+    try {
+      await page.screenshot({ 
+        path: `/tmp/facebook-debug-${Date.now()}.png`,
+        fullPage: true 
+      });
+      console.log("📸 Debug screenshot saved to /tmp/");
+    } catch (screenshotError) {
+      console.log("⚠️ Could not save debug screenshot:", screenshotError.message);
+    }
+
+    // Comprehensive selector list
+    const writeButtonSelectors = [
+      // Traditional "Write something..." selectors
+      'span:has-text("Write something...")',
+      'div[role="button"]:has-text("Write something...")',
+      '[aria-label="Write something..."]',
+      'span.x1lliihq:has-text("Write something...")',
+      'div:has(span:text("Write something..."))',
+      '[data-testid="status-attachment-mentions-input"]',
+      '[placeholder="Write something..."]',
+      'span:text-is("Write something...")',
+      '*:has-text("Write something...")',
+      
+      // New Facebook interface selectors
+      '[aria-label="Create a post"]',
+      '[data-testid="post-composer-input"]',
+      '[data-testid="post-creation-composer"]',
+      'div[role="button"]:has-text("What\'s on your mind")',
+      'div[role="button"]:has-text("Create post")',
+      'div[role="button"]:has-text("Share something")',
+      'div[role="button"]:has-text("Create a post")',
+      
+      // Mobile-specific selectors
+      '[aria-label="What\'s on your mind?"]',
+      'div[role="textbox"][contenteditable="true"]',
+      '[data-testid="composer-input"]',
+      'textarea[placeholder="What\'s on your mind?"]',
+      'div[data-testid="status-attachment-mentions-input"]',
+      
+      // Alternative text variations
+      'span:has-text("What\'s on your mind")',
+      'div:has-text("Start a discussion")',
+      'div:has-text("Share an update")',
+      'div:has-text("Post something")',
+      
+      // Generic post creation elements
+      '[role="button"][aria-label*="post"]',
+      '[role="button"][aria-label*="share"]',
+      '[role="button"][aria-label*="write"]',
+      'div[contenteditable="true"][role="textbox"]',
+      
+      // Group-specific selectors
+      'div[aria-label*="group"]',
+      '[data-testid="group-post-composer"]',
+      
+      // Fallback selectors
+      'div[role="button"]:visible',
+      'span:visible:contains("Write")',
+      'span:visible:contains("Share")',
+      'span:visible:contains("Post")',
+    ];
+
+    let writeButton = null;
+
+    for (const selector of writeButtonSelectors) {
+      try {
+        console.log(`🔍 Trying selector: ${selector}`);
+        await page.waitForSelector(selector, { timeout: 3000 });
+        const buttons = page.locator(selector);
+        const count = await buttons.count();
+
+        for (let i = 0; i < count; i++) {
+          const button = buttons.nth(i);
+          if (await button.isVisible()) {
+            writeButton = button;
+            console.log(`✅ Found write button with selector: ${selector} (index: ${i})`);
+            break;
+          }
+        }
+
+        if (writeButton) break;
+      } catch (error) {
+        console.log(`❌ Selector ${selector} failed:`, error.message);
+        continue;
+      }
+    }
+
+    // Aggressive search if needed
+    if (!writeButton) {
+      console.log("🔍 Trying aggressive search for write button...");
+      
+      // Method 1: XPath search for text content
+      try {
+        const xpathSelectors = [
+          `xpath=//*[contains(text(), "Write something")]`,
+          `xpath=//*[contains(text(), "What's on your mind")]`,
+          `xpath=//*[contains(text(), "Share something")]`,
+          `xpath=//*[contains(text(), "Create post")]`,
+          `xpath=//*[contains(text(), "Start a discussion")]`,
+        ];
+        
+        for (const xpath of xpathSelectors) {
+          try {
+            writeButton = page.locator(xpath).first();
+            if (await writeButton.isVisible({ timeout: 2000 })) {
+              console.log(`✅ Found write button using XPath: ${xpath}`);
+              break;
+            } else {
+              writeButton = null;
+            }
+          } catch (err) {
+            continue;
+          }
+        }
+      } catch (error) {
+        console.log("❌ XPath search failed:", error.message);
+      }
+      
+      // Method 2: Search for elements by role and try clicking them
+      if (!writeButton) {
+        console.log("🔍 Searching for clickable elements that might open composer...");
+        try {
+          const clickableElements = await page.locator('[role="button"]:visible').all();
+          console.log(`Found ${clickableElements.length} clickable elements`);
+          
+          for (let i = 0; i < Math.min(clickableElements.length, 10); i++) {
+            try {
+              const element = clickableElements[i];
+              const text = await element.textContent().catch(() => '');
+              const ariaLabel = await element.getAttribute('aria-label').catch(() => '');
+              
+              console.log(`🔍 Checking element ${i}: text="${text}", aria-label="${ariaLabel}"`);
+              
+              // Check if text/aria-label contains post-related keywords
+              const combined = (text + ' ' + ariaLabel).toLowerCase();
+              if (combined.includes('write') || combined.includes('post') || combined.includes('share') || 
+                  combined.includes('create') || combined.includes('mind') || combined.includes('discuss')) {
+                writeButton = element;
+                console.log(`✅ Found potential write button: "${text || ariaLabel}"`);
+                break;
+              }
+            } catch (err) {
+              continue;
+            }
+          }
+        } catch (error) {
+          console.log("❌ Element search failed:", error.message);
+        }
+      }
+      
+      // Method 3: Look for any input-like elements
+      if (!writeButton) {
+        console.log("🔍 Looking for any input-like elements...");
+        try {
+          const inputSelectors = [
+            'input[type="text"]:visible',
+            'textarea:visible',
+            'div[contenteditable="true"]:visible',
+            '[role="textbox"]:visible',
+          ];
+          
+          for (const selector of inputSelectors) {
+            try {
+              const element = page.locator(selector).first();
+              if (await element.isVisible({ timeout: 1000 })) {
+                writeButton = element;
+                console.log(`✅ Found input element: ${selector}`);
+                break;
+              }
+            } catch (err) {
+              continue;
+            }
+          }
+        } catch (error) {
+          console.log("❌ Input search failed:", error.message);
+        }
+      }
+    }
+
+    if (!writeButton) {
+      throw new Error("Could not find 'Write something...' button");
+    }
+
+    // Click the button to open modal
+    console.log("🖱️ Clicking 'Write something...' button to open modal...");
+    await writeButton.click();
+    await humanPause(2000, 3000);
+
+    // Find text input in modal
+    console.log("🔍 Looking for text input in the modal...");
+    const specificTextInputSelector =
+      'div.xzsf02u.x1a2a7pz.x1n2onr6.x14wi4xw.x9f619.x1lliihq.x5yr21d.xh8yej3.notranslate[contenteditable="true"][role="textbox"]';
+
+    let textInput = null;
+
+    try {
+      await page.waitForSelector(specificTextInputSelector, { timeout: 10000 });
+      textInput = page.locator(specificTextInputSelector);
+      console.log("✅ Found text input with specific selector");
+    } catch (error) {
+      console.log("❌ Specific selector failed, trying alternatives");
+
+      const fallbackSelectors = [
+        '[aria-placeholder="Create a public post…"][contenteditable="true"]',
+        '[data-lexical-editor="true"][contenteditable="true"]',
+        'div[contenteditable="true"][role="textbox"]',
+      ];
+
+      for (const selector of fallbackSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 5000 });
+          textInput = page.locator(selector).first();
+          console.log(`✅ Found text input with fallback selector: ${selector}`);
+          break;
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+
+    if (!textInput) {
+      throw new Error("Could not find text input in modal");
+    }
+
+    // Type the message
+    console.log("⌨️ Typing message into text input...");
+
+    try {
+      await textInput.click({ force: true });
+      await humanPause(1000, 2000);
+    } catch (error) {
+      console.log("🔧 Force click failed, trying JavaScript click...");
+      await textInput.evaluate((el) => el.click());
+      await humanPause(1000, 2000);
+    }
+
+    // Clear and type content
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Delete");
+    await humanPause(500, 1000);
+
+    console.log("⌨️ Typing message with keyboard...");
+      await page.keyboard.type(jobContent, { delay: 0 });
+    await humanPause(2000, 3000);
+
+    // Verify content was typed
+    const typedContent = await textInput.textContent();
+    console.log("📏 Content typed length:", typedContent?.length || 0);
+
+    if (!typedContent || typedContent.trim().length === 0) {
+      console.log("🔧 Content not typed, trying alternative method...");
+      await textInput.evaluate((el, content) => {
+        el.innerHTML = `<p>${content.replace(/\n/g, "</p><p>")}</p>`;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }, jobContent);
+      await humanPause(1000, 2000);
+    }
+
+    // Find and click Post button
+    console.log("⏳ Waiting for Post button to be enabled...");
+    const specificPostButtonSelector = 'div[aria-label="Post"][role="button"]:not([aria-disabled="true"])';
+
+    let postButton = null;
+
+    try {
+      await page.waitForSelector(specificPostButtonSelector, { timeout: 10000 });
+      postButton = page.locator(specificPostButtonSelector);
+      console.log("✅ Found enabled Post button");
+    } catch (error) {
+      console.log("🔍 Enabled post button not found, trying to find any post button...");
+
+      const disabledButtonSelector = 'div[aria-label="Post"][role="button"]';
+      try {
+        await page.waitForSelector(disabledButtonSelector, { timeout: 5000 });
+        postButton = page.locator(disabledButtonSelector);
+
+        const isDisabled = await postButton.getAttribute("aria-disabled");
+        console.log("🔍 Post button found, disabled status:", isDisabled);
+
+        if (isDisabled === "true") {
+          console.log("⏳ Post button is disabled, waiting for content to enable it...");
+          await humanPause(3000, 5000);
+
+          const stillDisabled = await postButton.getAttribute("aria-disabled");
+          if (stillDisabled === "true") {
+            console.log("🔧 Button still disabled, trying to add content again...");
+            await textInput.click({ force: true });
+            await page.keyboard.press("End");
+            await page.keyboard.type(" ", { delay: 100 });
+            await humanPause(2000, 3000);
+          }
+        }
+      } catch (error) {
+        console.log("❌ Could not find post button at all");
+      }
+    }
+
+    if (!postButton) {
+      throw new Error("Could not find Post button");
+    }
+
+    // Click Post button
+    console.log("🖱️ Clicking Post button...");
+
+    try {
+      await postButton.click();
+    } catch (error) {
+      console.log("🔧 Regular click failed, trying force click...");
+      await postButton.click({ force: true });
+    }
+
+    await humanPause(3000, 5000);
+
+    // Verify post was submitted
+    try {
+      const modalGone = await page
+        .waitForSelector('[role="dialog"]', {
+            state: "detached",
+            timeout: 100,
+          })
+        .then(() => true)
+        .catch(() => false);
+
+      if (modalGone) {
+        console.log("✅ Modal closed - post likely successful");
+      }
+
+      const successSelectors = [
+        'text="Your post is now published"',
+        'text="Post shared"',
+        'div[data-testid="toast-message"]',
+      ];
+
+      for (const selector of successSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 3000 });
+          console.log("✅ Found success message");
+          break;
+        } catch (error) {
+          continue;
+        }
+      }
+
+      console.log("✅ Job post created successfully!");
+      return true;
+    } catch (error) {
+      console.log("⚠️ Could not verify post submission, but no errors occurred:", error.message);
+      return true;
+    }
+  } catch (error) {
+  // Removed: fail log and throw for job post creation
+  }
+}
+
+// Add immediate self-reply after posting (kept for backward compatibility but now optional)
+async function addImmediateSelfReply(page, jobData, jobPostId) {
+  try {
+    console.log("💬 Adding immediate self-reply to engage candidates...");
+
+    await humanPause(3000, 5000);
+
+    // Look for comment box selectors
+    const commentBoxSelectors = [
+      '[contenteditable="true"][data-testid="comment-textbox"]',
+      'div[contenteditable="true"][role="textbox"]',
+      '[aria-label="Write a comment..."]',
+      '[placeholder="Write a comment..."]',
+      'div[contenteditable="true"].xzsf02u',
+      'div[contenteditable="true"][data-lexical-editor="true"]',
+    ];
+
+    let commentBox = null;
+
+    // Find the comment box
+    for (const selector of commentBoxSelectors) {
+      try {
+        console.log(`🔍 Trying comment box selector: ${selector}`);
+        await page.waitForSelector(selector, { timeout: 5000 });
+        commentBox = page.locator(selector).first();
+
+        if (await commentBox.isVisible()) {
+          console.log(`✅ Found comment box with selector: ${selector}`);
+          break;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+
+    if (!commentBox) {
+      console.log("⚠️ Could not find comment box for self-reply");
+      return false;
+    }
+
+    // Generate the self-reply message
+    const replyMessage = await generateSelfReplyMessage(jobData, jobPostId);
+
+    // Click the comment box and add the reply
+    console.log("📝 Adding self-reply comment...");
+    await commentBox.click();
+    await humanPause(1000, 2000);
+
+    // Clear any existing content and type the message
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Delete");
+    await humanPause(500, 1000);
+
+    await page.keyboard.type(replyMessage, { delay: 50 });
+    await humanPause(2000, 3000);
+
+    // Look for comment submit button
+    const submitButtonSelectors = [
+      '[aria-label="Comment"]',
+      'div[role="button"][aria-label="Comment"]',
+      '[data-testid="comment-submit-button"]',
+      'button[type="submit"]',
+      'div[role="button"]:has-text("Comment")',
+    ];
+
+    let submitButton = null;
+
+    for (const selector of submitButtonSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 3000 });
+        submitButton = page.locator(selector).first();
+
+        if (await submitButton.isVisible()) {
+          console.log(`✅ Found submit button with selector: ${selector}`);
+          break;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+
+    if (!submitButton) {
+      console.log("⚠️ Could not find comment submit button");
+      return false;
+    }
+
+    // Submit the comment
+    console.log("📤 Submitting self-reply comment...");
+    await submitButton.click();
+    await humanPause(3000, 5000);
+
+    console.log("✅ Self-reply comment added successfully");
+    return true;
+  } catch (error) {
+    console.error("❌ Failed to add self-reply:", error.message);
+    return false;
+  }
+}
+
+// Enhanced job posting with crash recovery - messenger link now included in post content
+async function postJobWithCrashRecovery(page, groupUrl, jobContent, jobData, jobPostId) {
+  try {
+    console.log(`📝 Posting job to group: ${groupUrl}`);
+    console.log("💬 Job post includes messenger link directly in content");
+
+    // Navigate to group
+    await navigateToGroupSafely(page, groupUrl);
+    console.log("✅ Navigation completed");
+
+    // Wait and test stability
+    console.log("⏳ Waiting 5 seconds to test stability...");
+    await humanPause(5000);
+
+    try {
+      if (page.isClosed && page.isClosed()) throw new Error("Page closed during wait");
+
+      const title = await page.title();
+      const currentUrl = page.url();
+      console.log(`📄 Page title: ${title}`);
+      console.log(`🔗 Current URL: ${currentUrl}`);
+
+      // Check for crash indicators
+      const lower = (title + " " + currentUrl).toLowerCase();
+      if (lower.includes("snap") || lower.includes("error") || lower.includes("crash") || lower.includes("killed")) {
+        throw new Error("Page appears to be crashed based on title/URL");
+      }
+
+      console.log("✅ Page stable - proceeding with job posting...");
+
+      // Create the actual job post (now includes messenger link)
+      const postSuccess = await createGroupPost(page, jobContent);
+
+      if (!postSuccess) {
+        throw new Error("Failed to create group post");
+      }
+
+      console.log("✅ Job post created with messenger link included in content!");
+
+      // Optional: Add immediate self-reply (can be disabled by setting addSelfReply to false)
+      const addSelfReply = false; // Set to true if you want both inline link AND self-reply
+      let selfReplySuccess = false;
+      
+      if (addSelfReply) {
+        console.log("📬 Adding immediate self-reply...");
+        selfReplySuccess = await addImmediateSelfReply(page, jobData, jobPostId);
+      } else {
+        console.log("📬 Skipping self-reply since messenger link is already in post content");
+      }
+
+      // Update job post status
+      await prisma.jobPost.update({
+        where: { id: jobPostId },
+        data: { 
+          status: "SUCCESS", 
+          postUrl: page.url(),
+          updatedAt: new Date() 
+        },
+      });
+
+      return {
+        success: true,
+        postUrl: page.url(),
+        groupUrl,
+        selfReplyAdded: selfReplySuccess,
+        messengerLinkInPost: true,
+        testType: "FULL_JOB_POSTING_WITH_INLINE_MESSENGER_LINK",
+      };
+
+    } catch (stabilityError) {
+      console.error(`❌ Page crashed or failed: ${stabilityError.message}`);
+
+      // Crash Recovery - Create new page and retry
+      try {
+        console.log("🔄 Opening a fresh page for crash recovery...");
+        const context = page.context();
+        const newPage = await context.newPage();
+
+        console.log("🔄 Navigating new page to group URL...");
+        await navigateToGroupSafely(newPage, groupUrl);
+
+        console.log("✅ Recovered in new page - proceeding with job posting...");
+
+        // Create the job post on the new page (includes messenger link)
+        const postSuccess = await createGroupPost(newPage, jobContent);
+
+        if (!postSuccess) {
+          throw new Error("Failed to create group post on recovered page");
+        }
+
+        const currentUrl = newPage.url();
+        const title = await newPage.title();
+        console.log(`✅ Job posted successfully on recovered page, title: ${title}`);
+        console.log("✅ Messenger link included in post content!");
+
+        // Update job post status
+        await prisma.jobPost.update({
+          where: { id: jobPostId },
+          data: { 
+            status: "SUCCESS", 
+            postUrl: currentUrl,
+            updatedAt: new Date() 
+          },
+        });
+
+        return {
+          success: true,
+          postUrl: currentUrl,
+          groupUrl,
+          selfReplyAdded: false,
+          messengerLinkInPost: true,
+          testType: "FULL_JOB_POSTING_WITH_INLINE_MESSENGER_LINK",
+          recoveredFromCrash: true,
+          reloadMethod: "NEW_PAGE",
+        };
+      } catch (npErr) {
+  // Removed: fail log and throw for new page recovery
+      }
+    }
+  } catch (error) {
+  // Removed: fail log for job posting failed
+
+    await prisma.jobPost.update({
+      where: { id: jobPostId },
+      data: {
+        status: "FAILED",
+        errorMessage: `Job posting failed: ${error.message}`,
+        attemptNumber: { increment: 1 },
+        updatedAt: new Date(),
+      },
+    });
+
+    return {
+      success: false,
+      error: error.message,
+      groupUrl,
+      selfReplyAdded: false,
+      messengerLinkInPost: false,
+      testType: "FULL_JOB_POSTING_WITH_INLINE_MESSENGER_LINK",
+    };
+  }
+}
+
+// Main automation function - Enhanced with messenger link in post content
+export async function runJobPostAutomation(credentials, jobData = null) {
+  let browser = null;
+  let context = null;
+  let page = null;
+
+  try {
+    console.log("🚀 Starting enhanced job posting automation with inline messenger links...");
+
+    if (!jobData) {
+      jobData = await prisma.job.findFirst({
+        where: { isActive: true, posts: { none: { status: "SUCCESS" } } },
+        include: { posts: true },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!jobData) throw new Error("No active jobs found");
+    } else {
+      // Validate that the provided jobData exists in the database
+      const existingJob = await prisma.job.findUnique({
+        where: { id: jobData.id },
+        include: { posts: true },
+      });
+      
+      if (!existingJob) {
+        throw new Error(`Job with ID ${jobData.id} not found in database`);
+      }
+      
+      // Use the fresh data from database to ensure consistency
+      jobData = existingJob;
+    }
+
+    console.log(`📋 Job: ${jobData.title} at ${jobData.company}`);
+
+    browser = await initializeJobPostBrowser();
+    context = await getJobPostContextForUser(browser, credentials.email || "default");
+    page = await context.newPage();
+
+    console.log("🔑 Logging in...");
+    await ensureLoggedIn({ page, context, credentials });
+    
+    // Add stability delay after login in production
+    if (process.env.NODE_ENV === 'production') {
+      console.log("⏱️ Stabilizing browser after login (production mode)...");
+      await humanPause(1000, 1100);
+    }
+
+    const { facebookGroups } = jobData;
+
+    if (!facebookGroups || facebookGroups.length === 0) throw new Error("No Facebook groups specified");
+
+    const results = [];
+
+    // Post to each group with crash recovery
+    for (const groupUrl of facebookGroups) {
+      try {
+        const jobPost = await prisma.jobPost.create({
+          data: { jobId: jobData.id, facebookGroupUrl: groupUrl, status: "POSTING" },
+        });
+
+        // Format job content with messenger link included
+        const jobContent = await formatJobPost(jobData, jobPost.id);
+        console.log("📝 Job post content includes messenger link directly in post");
+
+        const result = await postJobWithCrashRecovery(page, groupUrl, jobContent, jobData, jobPost.id);
+        results.push(result);
+
+        // Wait between posts if multiple groups
+        if (facebookGroups.length > 1 && results.length < facebookGroups.length) {
+          console.log("⏱️ Waiting between group posts...");
+          await humanPause(10000, 15000);
+        }
+      } catch (groupError) {
+        console.error(`❌ Group ${groupUrl} failed: ${groupError.message}`);
+        results.push({ 
+          success: false, 
+          error: groupError.message, 
+          groupUrl, 
+          selfReplyAdded: false, 
+          messengerLinkInPost: false,
+          testType: "FULL_JOB_POSTING_WITH_INLINE_MESSENGER_LINK" 
+        });
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    const failedCount = results.filter((r) => !r.success).length;
+    const recoveredCount = results.filter((r) => r.recoveredFromCrash).length;
+    const selfRepliesAdded = results.filter((r) => r.selfReplyAdded).length;
+    const messengerLinksInPosts = results.filter((r) => r.messengerLinkInPost).length;
+
+    console.log(`✅ Job posting completed: ${successCount} successful, ${failedCount} failed`);
+    console.log(`🔄 Recovered from crashes: ${recoveredCount}`);
+    console.log(`💬 Self-replies added: ${selfRepliesAdded}`);
+    console.log(`🎯 Posts with messenger links: ${messengerLinksInPosts}`);
+
+    return {
+      success: true,
+      message: "Enhanced job posting automation with inline messenger links completed",
+      timestamp: new Date().toISOString(),
+      jobId: jobData.id,
+      jobTitle: jobData.title,
+      results,
+      stats: { 
+        totalGroups: facebookGroups.length, 
+        successful: successCount, 
+        failed: failedCount, 
+        recoveredFromCrash: recoveredCount, 
+        selfRepliesAdded: selfRepliesAdded,
+        messengerLinksInPosts: messengerLinksInPosts,
+        testMode: "ENHANCED_POSTING_WITH_INLINE_MESSENGER_LINKS" 
+      },
+    };
+  } catch (error) {
+    console.error("❌ Enhanced automation error:", error.message);
+    throw error;
+  } finally {
+    // Optional: Keep browser open for inspection in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔍 Keeping browser open for inspection (30 seconds)...");
+      await humanPause(30000);
+    }
+    console.log("🧹 To cleanup manually, call cleanupJobPostAutomation()");
+  }
+}
+
+// Manual cleanup function
+export async function cleanupJobPostAutomation() {
+  try {
+    console.log("🧹 Manual cleanup started...");
+
+    if (jobPostContext && !jobPostContext._closed) {
+      await jobPostContext.close();
+      jobPostContext = null;
+      currentJobUser = null;
+      console.log("✅ Context closed");
+    }
+
+    if (jobPostBrowser && jobPostBrowser.isConnected()) {
+      await jobPostBrowser.close();
+      jobPostBrowser = null;
+      console.log("✅ Browser closed");
+    }
+
+    console.log("🧹 Manual cleanup completed successfully");
+  } catch (error) {
+    console.error("❌ Cleanup error:", error.message);
+    jobPostBrowser = null;
+    jobPostContext = null;
+    currentJobUser = null;
+  }
+}

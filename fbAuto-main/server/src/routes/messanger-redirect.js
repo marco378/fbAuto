@@ -448,5 +448,12 @@ async function sendToN8N(payload) {
   }
 }
 
-// Express route for messenger redirect
-router.get('/api/messenger-redirect', messengerRedirectWithContext);
+
+// ✅ Express router setup
+import express from 'express';
+const router = express.Router();
+
+router.get('/', messengerRedirectWithContext);  // responds to /messenger-redirect
+router.get('/api', messengerRedirectWithContext);  // optional extra path for /messenger-redirect/api
+
+export default router;

@@ -66,8 +66,8 @@ async function setupRoutes() {
     const jobPostModule = await import('./services/job-post-scheduler.js');
     jobPostScheduler = jobPostModule.jobPostScheduler;
     
-    const messengerModule = await import('./routes/messanger-redirect.js');
-    messengerRedirectWithContext = messengerModule.messengerRedirectWithContext;
+  const messengerModule = await import('./routes/messanger-redirect.js');
+  const messengerRouter = messengerModule.default;
     
     const contextModule = await import('./routes/job-context.js');
     contextRouter = contextModule.default;
@@ -77,7 +77,7 @@ async function setupRoutes() {
     
     // Setup routes
     app.use('/api', router);
-    app.use('/messenger-redirect', messengerRedirectWithContext);
+  app.use('/api/messenger-redirect', messengerRouter);
     app.use('/job-context', contextRouter);
     app.get('/webhook/messenger', handleMessengerWebhook);
     app.post('/webhook/messenger', handleMessengerWebhook);
